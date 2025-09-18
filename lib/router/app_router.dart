@@ -7,8 +7,9 @@ import '../features/workout/pages/history_page.dart';
 import '../features/exercise/pages/catalog_page.dart';
 import '../features/settings/pages/settings_page.dart';
 import '../features/workout/pages/workout_detail_page.dart';
+import '../features/workout/pages/workout_editor_page.dart';
 
-/// Rotas nomeadas (evita strings mágicas espalhadas)
+/// Rotas nomeadas
 abstract class AppRoutes {
   static const shell = '/';
   static const today = '/today';
@@ -17,16 +18,14 @@ abstract class AppRoutes {
   static const settings = '/settings';
 
   static const workoutDetail = '/workout/:id';
+  static const workoutNew = '/workout/new';
 }
 
 final router = GoRouter(
   initialLocation: AppRoutes.today,
   routes: [
     ShellRoute(
-      // Shell com NavigationBar persistente
-      builder: (context, state, child) {
-        return _NavShell(child: child);
-      },
+      builder: (context, state, child) => _NavShell(child: child),
       routes: [
         GoRoute(
           path: AppRoutes.today,
@@ -55,7 +54,7 @@ final router = GoRouter(
       ],
     ),
 
-    // Detalhe de treino fica fora do shell para poder ter outras ações fullscreen
+    // Detalhe do treino
     GoRoute(
       path: AppRoutes.workoutDetail,
       name: 'workout_detail',
@@ -64,13 +63,18 @@ final router = GoRouter(
         return WorkoutDetailPage(workoutId: id);
       },
     ),
+
+    // ✅ NOVO: criar treino (usado por context.pushNamed('workout_new'))
+    GoRoute(
+      path: AppRoutes.workoutNew,
+      name: 'workout_new',
+      builder: (context, state) => const WorkoutEditorPage(),
+    ),
   ],
 );
 
-/// Widget do shell com a NavigationBar inferior
 class _NavShell extends StatefulWidget {
   const _NavShell({required this.child});
-
   final Widget child;
 
   @override
@@ -82,7 +86,7 @@ class _NavShellState extends State<_NavShell> {
     if (location.startsWith(AppRoutes.history)) return 1;
     if (location.startsWith(AppRoutes.catalog)) return 2;
     if (location.startsWith(AppRoutes.settings)) return 3;
-    return 0; // today
+    return 0;
   }
 
   void _onTap(int index, BuildContext context) {
