@@ -171,4 +171,8 @@ class WorkoutRepository {
     }
     return workoutId;
   }
+
+    /// Stream: treinos ativos (done = false)
+  Stream<List<Workout>> watchActiveWorkouts() => db.watchActiveWorkoutsDesc();
+
 }

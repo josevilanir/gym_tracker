@@ -101,6 +101,14 @@ class AppDatabase extends _$AppDatabase {
     return id;
   }
 
+  /// Stream com treinos **ativos** (done = false), ordenados por data desc.
+  Stream<List<Workout>> watchActiveWorkoutsDesc() {
+    final query = (select(workouts)
+          ..where((w) => w.done.equals(false))
+          ..orderBy([(w) => OrderingTerm.desc(w.dateEpoch)]));
+    return query.watch();
+  }
+  
   Future<void> setWorkoutDone(String workoutId, bool done) async {
     await (update(workouts)..where((w) => w.id.equals(workoutId)))
         .write(WorkoutsCompanion(done: Value(done)));

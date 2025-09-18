@@ -1,3 +1,4 @@
+// lib/features/workout/pages/today_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -18,21 +19,21 @@ class TodayPage extends ConsumerWidget {
         title: const Text('Hoje'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.history),
-            onPressed: () => context.pushNamed('history'),
-            tooltip: 'Histórico',
+            tooltip: 'Notificações (em breve)',
+            onPressed: () {},
+            icon: const Icon(Icons.alarm),
           ),
           IconButton(
-            icon: const Icon(Icons.inventory_2),
+            tooltip: 'Templates',
             onPressed: () => context.pushNamed('catalog'),
-            tooltip: 'Catálogo',
+            icon: const Icon(Icons.auto_awesome_motion),
           ),
         ],
       ),
       body: seed.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erro ao iniciar: $e')),
         data: (_) => const _TodayContent(),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Erro ao preparar app: $e')),
       ),
       floatingActionButton: const _StartFab(),
     );
@@ -46,8 +47,9 @@ class _TodayContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.watch(workoutRepoProvider);
 
-    return FutureBuilder<List<Workout>>(
-      future: repo.listActiveWorkouts(), // só ativos
+    return StreamBuilder<List<Workout>>(
+      // ✅ agora escutamos o banco; a lista atualiza sozinha
+      stream: repo.watchActiveWorkouts(),
       builder: (context, snapshot) {
         final items = snapshot.data ?? [];
         if (items.isEmpty) {
@@ -69,20 +71,30 @@ class _TodayContent extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemCount: items.length,
-          itemBuilder: (context, i) {
-            final w = items[i];
+          itemBuilder: (context, index) {
+            final w = items[index];
             final date = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
-            final f = DateFormat('dd/MM/yyyy HH:mm');
+            final dateStr = DateFormat('dd/MM, HH:mm').format(date);
+            final title = (w.title?.trim().isNotEmpty ?? false) ? w.title! : 'Treino sem nome';
 
             return Card(
               child: ListTile(
-                title: Text(w.title ?? 'Treino ${i + 1}'),
-                subtitle: Text('${f.format(date)} • Em andamento'),
-                trailing: const Icon(Icons.schedule),
-                onTap: () {
-                  // Abre a NOVA tela de detalhe do treino
-                  context.pushNamed('workout_detail', pathParameters: {'id': w.id});
-                },
+                leading: const Icon(Icons.fitness_center),
+                title: Text(title),
+                subtitle: Text('Iniciado em $dateStr'),
+                trailing: IconButton(
+                  tooltip: 'Concluir',
+                  icon: const Icon(Icons.check_circle_outline),
+                  onPressed: () async {
+                    await repo.markDone(w.id, true); // ✅ some da lista
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Treino concluído!')),
+                      );
+                    }
+                  },
+                ),
+                onTap: () => context.pushNamed('workout_detail', pathParameters: {'id': w.id}),
               ),
             );
           },
@@ -98,47 +110,43 @@ class _StartFab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    void openSheet() => showModalBottomSheet(
-          context: context,
-          showDragHandle: true,
-          builder: (_) => _StartSheet(),
-        );
-
-    if (inline) {
-      return FilledButton.icon(
+    return Padding(
+      padding: inline ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8, right: 8),
+      child: FloatingActionButton.extended(
+        heroTag: inline ? 'start_inline' : 'start_fab',
+        onPressed: () => _showStartDialog(context, ref),
         icon: const Icon(Icons.playlist_add),
         label: const Text('Começar'),
-        onPressed: openSheet,
-      );
-    }
-
-    return FloatingActionButton.extended(
-      onPressed: openSheet,
-      label: const Text('Começar'),
-      icon: const Icon(Icons.playlist_add),
+      ),
     );
   }
-}
 
-class _StartSheet extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final repo = ref.watch(workoutRepoProvider);
+  void _showStartDialog(BuildContext context, WidgetRef ref) {
+    final repo = ref.read(workoutRepoProvider);
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: FutureBuilder(
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          left: 16, right: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          top: 8,
+        ),
+        child: FutureBuilder<List<Template>>(
           future: repo.listTemplates(),
           builder: (context, snap) {
-            final templates = (snap.data ?? []) as List<Template>;
+            final templates = snap.data ?? [];
             return Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text('Iniciar treino', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
                 FilledButton.icon(
-                  icon: const Icon(Icons.fiber_new),
-                  label: const Text('Novo do zero'),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Criar treino do zero'),
                   onPressed: () {
                     Navigator.pop(context);
                     context.pushNamed('workout_new');
