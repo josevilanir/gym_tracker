@@ -1,13 +1,15 @@
 // lib/features/workout/pages/history_page.dart
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'dart:ui' as ui;
+
 import '../controllers/providers.dart';
 import '../../../data/db/app_database.dart';
 
 enum _QuickRange { last7, last30, thisMonth, all, custom }
+enum _Metric { sets, exercises }
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -19,7 +21,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   _QuickRange _range = _QuickRange.last7;
   DateTimeRange? _customRange;
 
-  // calcula intervalo baseado no filtro atual
+  _Metric _metric = _Metric.sets;
+
   (DateTime start, DateTime end) _currentBounds() {
     final now = DateTime.now();
     switch (_range) {
@@ -37,9 +40,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       case _QuickRange.all:
         return (DateTime(2000, 1, 1), now);
       case _QuickRange.custom:
-        if (_customRange != null) {
-          return (_customRange!.start, _customRange!.end);
-        }
+        if (_customRange != null) return (_customRange!.start, _customRange!.end);
         return (now.subtract(const Duration(days: 6)), now);
     }
   }
@@ -50,10 +51,36 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     return repo.listFinishedWorkoutsBetween(start: start, end: end);
   }
 
-  Future<List<({DateTime day, int volume})>> _loadDailyVolume() async {
+  /// Calcula série/exercício por dia AQUI (para não mexer no repositório).
+  Future<List<({DateTime day, int volume})>> _loadDailyData() async {
     final repo = ref.read(workoutRepoProvider);
     final (start, end) = _currentBounds();
-    return repo.dailyVolume(start: start, end: end);
+
+    // normaliza
+    DateTime startDay = DateTime(start.year, start.month, start.day);
+    DateTime endDay = DateTime(end.year, end.month, end.day, 23, 59, 59);
+
+    final workouts = await repo.listFinishedWorkoutsBetween(start: startDay, end: endDay);
+    final Map<DateTime, int> perDay = {};
+
+    for (final w in workouts) {
+      final d = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+      final key = DateTime(d.year, d.month, d.day);
+      int v;
+      if (_metric == _Metric.sets) {
+        v = await repo.countSetsInWorkout(w.id);
+      } else {
+        v = await repo.countExercisesInWorkout(w.id);
+      }
+      perDay.update(key, (old) => old + v, ifAbsent: () => v);
+    }
+
+    final days = <({DateTime day, int volume})>[];
+    for (DateTime d = startDay; !d.isAfter(endDay); d = d.add(const Duration(days: 1))) {
+      final key = DateTime(d.year, d.month, d.day);
+      days.add((day: key, volume: perDay[key] ?? 0));
+    }
+    return days;
   }
 
   @override
@@ -93,16 +120,33 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       body: Column(
         children: [
           const SizedBox(height: 8),
-          _QuickFilters(
-            current: _range,
-            onSelected: (r) => setState(() => _range = r),
+          _QuickFilters(current: _range, onSelected: (r) => setState(() => _range = r)),
+          const SizedBox(height: 8),
+
+          // Toggle de métrica
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  selected: _metric == _Metric.sets,
+                  label: const Text('Séries'),
+                  onSelected: (_) => setState(() => _metric = _Metric.sets),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  selected: _metric == _Metric.exercises,
+                  label: const Text('Exercícios'),
+                  onSelected: (_) => setState(() => _metric = _Metric.exercises),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
 
-          // -------- Gráfico + Lista (carregados em paralelo) --------
           Expanded(
             child: FutureBuilder<List<({DateTime day, int volume})>>(
-              future: _loadDailyVolume(),
+              future: _loadDailyData(),
               builder: (context, volSnap) {
                 return FutureBuilder<List<Workout>>(
                   future: _loadWorkouts(),
@@ -118,9 +162,12 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        // CARD do gráfico
-                        _VolumeChartCard(volumes: volumes),
-
+                        _VolumeChartCard(
+                          title: _metric == _Metric.sets
+                              ? 'Séries por dia'
+                              : 'Exercícios por dia',
+                          volumes: volumes,
+                        ),
                         const SizedBox(height: 12),
 
                         if (workouts.isEmpty)
@@ -145,9 +192,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                 repo.countSetsInWorkout(w.id),
                               ]),
                               builder: (context, AsyncSnapshot<List<int>> s2) {
-                                final exCount = (s2.data != null && s2.data!.isNotEmpty)
-                                    ? s2.data![0]
-                                    : 0;
+                                final exCount =
+                                    (s2.data != null && s2.data!.isNotEmpty) ? s2.data![0] : 0;
                                 final setCount = (s2.data != null && s2.data!.length > 1)
                                     ? s2.data![1]
                                     : 0;
@@ -200,10 +246,7 @@ class _QuickFilters extends StatelessWidget {
   final _QuickRange current;
   final ValueChanged<_QuickRange> onSelected;
 
-  const _QuickFilters({
-    required this.current,
-    required this.onSelected,
-  });
+  const _QuickFilters({required this.current, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -238,36 +281,34 @@ class _QuickFilters extends StatelessWidget {
 class _ChipStat extends StatelessWidget {
   final IconData icon;
   final String label;
-
-  const _ChipStat({
-    required this.icon,
-    required this.label,
-  });
+  const _ChipStat({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      avatar: Icon(icon, size: 18),
-      label: Text(label),
-    );
+    return Chip(avatar: Icon(icon, size: 18), label: Text(label));
   }
 }
 
-// ------------- GRÁFICO DE VOLUME (CustomPaint) -------------
+// ------------------- GRÁFICO COM TOOLTIP -------------------
 
-class _VolumeChartCard extends StatelessWidget {
+class _VolumeChartCard extends StatefulWidget {
+  final String title;
   final List<({DateTime day, int volume})> volumes;
-  const _VolumeChartCard({required this.volumes});
+  const _VolumeChartCard({required this.title, required this.volumes});
+
+  @override
+  State<_VolumeChartCard> createState() => _VolumeChartCardState();
+}
+
+class _VolumeChartCardState extends State<_VolumeChartCard> {
+  int? _hoverIndex;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final maxV = volumes.isEmpty
-        ? 0
-        : volumes.map((e) => e.volume).reduce(math.max);
-    final label = volumes.isEmpty
+    final label = widget.volumes.isEmpty
         ? 'Sem dados no período'
-        : 'Volume por dia (${volumes.length}d)';
+        : '${widget.title} (${widget.volumes.length}d)';
 
     return Card(
       child: Padding(
@@ -278,19 +319,36 @@ class _VolumeChartCard extends StatelessWidget {
             Text(label, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             SizedBox(
-              height: 160,
-              child: CustomPaint(
-                painter: _BarChartPainter(
-                  data: volumes.map((e) => e.volume).toList(),
-                  labels: volumes
-                      .map((e) => DateFormat('dd/MM').format(e.day))
-                      .toList(),
-                  barColor: cs.primary,
-                  axisColor: cs.outlineVariant,
-                  textColor: Theme.of(context).textTheme.bodySmall?.color ??
-                      cs.onSurfaceVariant,
-                ),
-                child: Container(),
+              height: 180,
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (d) {
+                      final idx = _BarChartPainter.hitTestIndex(
+                        localPos: d.localPosition,
+                        size: Size(c.maxWidth, 180),
+                        dataLength: widget.volumes.length,
+                      );
+                      setState(() => _hoverIndex = idx);
+                    },
+                    child: CustomPaint(
+                      painter: _BarChartPainter(
+                        data: widget.volumes.map((e) => e.volume).toList(),
+                        labels: widget.volumes
+                            .map((e) => DateFormat('dd/MM').format(e.day))
+                            .toList(),
+                        barColor: cs.primary,
+                        axisColor: cs.outlineVariant,
+                        textColor: Theme.of(context).textTheme.bodySmall?.color ??
+                            cs.onSurfaceVariant,
+                        hoverIndex: _hoverIndex,
+                        tooltipBg: cs.surfaceVariant,
+                        tooltipFg: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -306,6 +364,9 @@ class _BarChartPainter extends CustomPainter {
   final Color barColor;
   final Color axisColor;
   final Color textColor;
+  final int? hoverIndex;
+  final Color tooltipBg;
+  final Color tooltipFg;
 
   _BarChartPainter({
     required this.data,
@@ -313,26 +374,43 @@ class _BarChartPainter extends CustomPainter {
     required this.barColor,
     required this.axisColor,
     required this.textColor,
+    this.hoverIndex,
+    required this.tooltipBg,
+    required this.tooltipFg,
   });
+
+  static const double _leftPad = 28;
+  static const double _bottomPad = 20;
+  static const double _topPad = 8;
+  static const double _rightPad = 8;
+
+  static int? hitTestIndex({
+    required Offset localPos,
+    required Size size,
+    required int dataLength,
+  }) {
+    final chartW = size.width - _leftPad - _rightPad;
+    final barW = chartW / math.max(1, dataLength) * 0.6;
+    final gap = (chartW / math.max(1, dataLength) - barW);
+    for (int i = 0; i < dataLength; i++) {
+      final x = _leftPad + i * (barW + gap) + gap / 2;
+      final rect = Rect.fromLTWH(x, _topPad, barW, size.height - _topPad - _bottomPad);
+      if (rect.contains(localPos)) return i;
+    }
+    return null;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paintAxis = Paint()
-      ..color = axisColor
-      ..strokeWidth = 1;
+    final paintAxis = Paint()..color = axisColor..strokeWidth = 1;
 
-    final double leftPad = 28;
-    final double bottomPad = 20;
-    final double topPad = 8;
-    final double rightPad = 8;
-
-    final chartW = size.width - leftPad - rightPad;
-    final chartH = size.height - topPad - bottomPad;
+    final chartW = size.width - _leftPad - _rightPad;
+    final chartH = size.height - _topPad - _bottomPad;
 
     // Eixos
-    final origin = Offset(leftPad, size.height - bottomPad);
-    canvas.drawLine(origin, Offset(size.width - rightPad, size.height - bottomPad), paintAxis);
-    canvas.drawLine(origin, Offset(leftPad, topPad), paintAxis);
+    final origin = Offset(_leftPad, size.height - _bottomPad);
+    canvas.drawLine(origin, Offset(size.width - _rightPad, size.height - _bottomPad), paintAxis);
+    canvas.drawLine(origin, Offset(_leftPad, _topPad), paintAxis);
 
     if (data.isEmpty) return;
 
@@ -341,50 +419,64 @@ class _BarChartPainter extends CustomPainter {
     final gap = (chartW / data.length - barW);
 
     final barPaint = Paint()..color = barColor;
-    // ignore: prefer_function_declarations_over_variables
-    final tp = (String s) {
-      final ts = TextSpan(
-        text: s,
-        style: TextStyle(fontSize: 10, color: textColor),
-      );
-      final tp = TextPainter(
-        text: ts,
-        textDirection: ui.TextDirection.ltr, // ✅ usa enum do dart:ui
-      );
+    TextPainter _tp(String s) {
+      final ts = TextSpan(text: s, style: TextStyle(fontSize: 10, color: textColor));
+      final tp = TextPainter(text: ts, textDirection: ui.TextDirection.ltr);
       tp.layout();
       return tp;
-    };
+    }
 
     for (int i = 0; i < data.length; i++) {
-      final x = leftPad + i * (barW + gap) + gap / 2;
-      final h = maxVal == 0 ? 0.0 : (data[i] / maxVal) * chartH;
+      final x = _leftPad + i * (barW + gap) + gap / 2;
+      final h = maxVal == 0 ? 0.0 : (data[i] / maxVal) * chartH; // double
       final rect = Rect.fromLTWH(x, origin.dy - h, barW, h);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
-        barPaint,
-      );
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(4)), barPaint);
 
-      // labels X esparsas (mostra a cada ~max(1, n/7))
+      // labels X (a cada ~n/7)
       final step = math.max(1, (data.length / 7).floor());
       if (i % step == 0 || i == data.length - 1) {
-        final lbl = tp(labels[i]);
+        final lbl = _tp(labels[i]);
         final lx = x + barW / 2 - lbl.width / 2;
-        final ly = size.height - bottomPad + 2;
+        final ly = size.height - _bottomPad + 2;
         lbl.paint(canvas, Offset(lx, ly));
       }
     }
 
-    // marca do valor máximo (texto pequeno no topo)
-    final maxLbl = tp(maxVal.toInt().toString());
-    maxLbl.paint(canvas, Offset(4, topPad - 2));
+    // Tooltip simples
+    if (hoverIndex != null && hoverIndex! >= 0 && hoverIndex! < data.length) {
+      final i = hoverIndex!;
+      final x = _leftPad + i * (barW + gap) + gap / 2 + barW / 2;
+      final h = maxVal == 0 ? 0.0 : (data[i] / maxVal) * chartH;
+      final y = origin.dy - h - 8;
+
+      final txt = _tp(data[i].toString());
+      final pad = 6.0;
+      final r = RRect.fromLTRBR(
+        x - txt.width / 2 - pad,
+        y - txt.height - pad,
+        x + txt.width / 2 + pad,
+        y + pad,
+        const Radius.circular(8),
+      );
+      final bg = Paint()..color = tooltipBg;
+      canvas.drawRRect(r, bg);
+      txt.paint(canvas, Offset(x - txt.width / 2, y - txt.height));
+    }
+
+    // valor máximo no topo
+    final maxLbl = _tp(maxVal.toInt().toString());
+    maxLbl.paint(canvas, const Offset(4, _topPad - 2));
   }
 
   @override
-  bool shouldRepaint(covariant _BarChartPainter oldDelegate) {
-    return oldDelegate.data != data ||
-        oldDelegate.labels != labels ||
-        oldDelegate.barColor != barColor ||
-        oldDelegate.axisColor != axisColor ||
-        oldDelegate.textColor != textColor;
+  bool shouldRepaint(covariant _BarChartPainter old) {
+    return old.data != data ||
+        old.labels != labels ||
+        old.barColor != barColor ||
+        old.axisColor != axisColor ||
+        old.textColor != textColor ||
+        old.hoverIndex != hoverIndex ||
+        old.tooltipBg != tooltipBg ||
+        old.tooltipFg != tooltipFg;
   }
 }
