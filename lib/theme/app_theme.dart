@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Ajuste a cor-semente para combinar com a identidade visual do cliente
   static const _seed = Color(0xFF7C4DFF);
 
   static ThemeData get light {
@@ -17,7 +16,6 @@ class AppTheme {
         centerTitle: true,
         elevation: 0,
       ),
-      // >>> AQUI o ajuste: CardThemeData (não CardTheme)
       cardTheme: CardThemeData(
         elevation: 0,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -27,6 +25,11 @@ class AppTheme {
         elevation: 1,
         indicatorShape: const StadiumBorder(),
         backgroundColor: scheme.surface,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
       ),
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(
@@ -57,7 +60,6 @@ class AppTheme {
         centerTitle: true,
         elevation: 0,
       ),
-      // >>> AQUI o ajuste: CardThemeData (não CardTheme)
       cardTheme: CardThemeData(
         elevation: 0,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -67,6 +69,11 @@ class AppTheme {
         elevation: 1,
         indicatorShape: const StadiumBorder(),
         backgroundColor: scheme.surface,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
       ),
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(
