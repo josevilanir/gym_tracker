@@ -1,89 +1,65 @@
+// lib/features/workout/pages/history_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:go_router/go_router.dart';
 
 import '../controllers/providers.dart';
 import '../../../data/db/app_database.dart';
-import '../../../data/repositories/workout_repository.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
-
   @override
   ConsumerState<HistoryPage> createState() => _HistoryPageState();
 }
 
 class _HistoryPageState extends ConsumerState<HistoryPage> {
-  DateTimeRange? _range;
-
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(workoutRepoProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Histórico'),
-        actions: [
-          IconButton(
-            tooltip: 'Filtrar por período',
-            icon: const Icon(Icons.filter_alt),
-            onPressed: () async {
-              final now = DateTime.now();
-              final lastWeek = now.subtract(const Duration(days: 7));
-              final picked = await showDateRangePicker(
-                context: context,
-                firstDate: DateTime(now.year - 2),
-                lastDate: DateTime(now.year + 1),
-                initialDateRange: _range ?? DateTimeRange(start: lastWeek, end: now),
-              );
-              if (picked != null) setState(() => _range = picked);
-            },
-          ),
-          if (_range != null)
-            IconButton(
-              tooltip: 'Limpar filtro',
-              icon: const Icon(Icons.close),
-              onPressed: () => setState(() => _range = null),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Histórico')),
       body: FutureBuilder<List<Workout>>(
         future: repo.listWorkouts(),
-        builder: (context, snapshot) {
-          var items = snapshot.data ?? [];
-          if (_range != null) {
-            items = items.where((w) {
-              final d = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
-              return !d.isBefore(_range!.start) && !d.isAfter(_range!.end);
-            }).toList();
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
+          final items = snap.data ?? [];
           if (items.isEmpty) {
-            return const Center(child: Text('Nenhum treino no período.'));
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.history, size: 48, color: Colors.grey),
+                  const SizedBox(height: 8),
+                  const Text('Nenhum treino concluído ainda.'),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Conclua um treino para vê-lo aqui.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            );
           }
-
-          return FutureBuilder<List<_WorkoutWithVolume>>(
-            future: _withVolumes(repo, items),
-            builder: (context, snap) {
-              final list = snap.data ?? [];
-              final f = DateFormat('dd/MM/yyyy HH:mm');
-              return ListView.separated(
-                padding: const EdgeInsets.all(16),
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemCount: list.length,
-                itemBuilder: (context, i) {
-                  final it = list[i];
-                  final d = DateTime.fromMillisecondsSinceEpoch(it.workout.dateEpoch);
-                  return Card(
-                    child: ListTile(
-                      title: Text(it.workout.title ?? 'Treino ${i + 1}'),
-                      subtitle: Text('${f.format(d)} • Volume: ${it.volume.toStringAsFixed(1)} kg'),
-                      trailing: Icon(it.workout.done ? Icons.check_circle : Icons.schedule),
-                      // ✅ abre a rota unificada
-                      onTap: () => context.pushNamed('workout_detail', pathParameters: {'id': it.workout.id}),
-                    ),
-                  );
-                },
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final w = items[i];
+              final date =
+                  DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+              final dateStr = DateFormat('dd/MM, HH:mm').format(date);
+              final title =
+                  (w.title?.trim().isNotEmpty ?? false) ? w.title! : 'Treino sem nome';
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.check_circle, color: Colors.green),
+                  title: Text(title),
+                  subtitle: Text('Concluído em $dateStr'),
+                ),
               );
             },
           );
@@ -91,22 +67,4 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       ),
     );
   }
-
-  Future<List<_WorkoutWithVolume>> _withVolumes(
-    WorkoutRepository repo,
-    List<Workout> workouts,
-  ) async {
-    final out = <_WorkoutWithVolume>[];
-    for (final w in workouts) {
-      final vol = await repo.computeWorkoutVolume(w.id);
-      out.add(_WorkoutWithVolume(w, vol));
-    }
-    return out;
-  }
-}
-
-class _WorkoutWithVolume {
-  final Workout workout;
-  final double volume;
-  _WorkoutWithVolume(this.workout, this.volume);
 }
