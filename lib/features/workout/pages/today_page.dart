@@ -48,56 +48,86 @@ class _TodayContent extends ConsumerWidget {
     final repo = ref.watch(workoutRepoProvider);
 
     return StreamBuilder<List<Workout>>(
-      // ✅ agora escutamos o banco; a lista atualiza sozinha
+      // escuta os treinos ativos em tempo real
       stream: repo.watchActiveWorkouts(),
       builder: (context, snapshot) {
         final items = snapshot.data ?? [];
+
         if (items.isEmpty) {
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Sem treinos ativos.'),
-                const SizedBox(height: 8),
-                const Text('Crie um novo ou use uma rotina salva.'),
-                const SizedBox(height: 16),
-                const _StartFab(inline: true),
+              children: const [
+                Text('Sem treinos ativos.'),
+                SizedBox(height: 8),
+                Text('Crie um novo ou use uma rotina salva.'),
+                SizedBox(height: 16),
+                _StartFab(inline: true),
               ],
             ),
           );
         }
 
-        return ListView.separated(
+        return ListView(
           padding: const EdgeInsets.all(16),
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final w = items[index];
-            final date = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
-            final dateStr = DateFormat('dd/MM, HH:mm').format(date);
-            final title = (w.title?.trim().isNotEmpty ?? false) ? w.title! : 'Treino sem nome';
-
-            return Card(
-              child: ListTile(
-                leading: const Icon(Icons.fitness_center),
-                title: Text(title),
-                subtitle: Text('Iniciado em $dateStr'),
-                trailing: IconButton(
-                  tooltip: 'Concluir',
-                  icon: const Icon(Icons.check_circle_outline),
-                  onPressed: () async {
-                    await repo.markDone(w.id, true); // ✅ some da lista
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Treino concluído!')),
-                      );
-                    }
-                  },
+          children: [
+            // HEADER
+            Card(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hoje',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${items.length} treino(s) ativo(s)',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                    ),
+                  ],
                 ),
-                onTap: () => context.pushNamed('workout_detail', pathParameters: {'id': w.id}),
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 12),
+
+            // LISTA DE TREINOS ATIVOS
+            ...items.map((w) {
+              final date = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+              final dateStr = DateFormat('dd/MM, HH:mm').format(date);
+              final title =
+                  (w.title?.trim().isNotEmpty ?? false) ? w.title! : 'Treino sem nome';
+
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.fitness_center),
+                  title: Text(title),
+                  subtitle: Text('Iniciado em $dateStr'),
+                  trailing: IconButton(
+                    tooltip: 'Concluir',
+                    icon: const Icon(Icons.check_circle_outline),
+                    onPressed: () async {
+                      await repo.markDone(w.id, true);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Treino concluído!')),
+                        );
+                      }
+                    },
+                  ),
+                  onTap: () =>
+                      context.pushNamed('workout_detail', pathParameters: {'id': w.id}),
+                ),
+              );
+            }),
+          ],
         );
       },
     );
