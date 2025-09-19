@@ -33,52 +33,64 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text('$title ($date)'),
-            actions: [
-              IconButton(
-                tooltip: 'Salvar como rotina',
-                icon: const Icon(Icons.bookmark_add_outlined),
-                onPressed: () async {
-                  final nameCtrl = TextEditingController(text: title);
-                  final name = await showDialog<String>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Salvar rotina'),
-                      content: TextField(
-                        controller: nameCtrl,
-                        decoration: const InputDecoration(labelText: 'Nome da rotina'),
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
-                          child: const Text('Salvar'),
-                        ),
-                      ],
+          title: Text('$title ($date)'),
+          actions: [
+            // Botão: salvar treino como rotina
+            IconButton(
+              tooltip: 'Salvar como rotina',
+              icon: const Icon(Icons.bookmark_add_outlined),
+              onPressed: () async {
+                final nameCtrl = TextEditingController(text: title);
+                final name = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                  title: const Text('Salvar rotina'),
+                  content: TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Nome da rotina'),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancelar'),
                     ),
-                  );
-                  if (name != null && name.isNotEmpty) {
-                    await repo.saveWorkoutAsTemplate(workoutId: widget.workoutId, name: name);
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Rotina salva!')),
-                    );
-                  }
-                },
-              ),
-              IconButton(
-                tooltip: 'Concluir treino',
-                icon: const Icon(Icons.check),
-                onPressed: () async {
-                  await repo.markDone(widget.workoutId, true);
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('Treino concluído!')));
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          ),
+                    FilledButton(
+                      onPressed: () =>
+                    Navigator.pop(ctx, nameCtrl.text.trim()),
+                    child: const Text('Salvar'),
+                    ),
+                    ],
+                  ),
+                );
+
+        if (name != null && name.isNotEmpty) {
+          await repo.saveWorkoutAsTemplate(
+            workoutId: widget.workoutId,
+            name: name,
+          );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Rotina salva!')),
+          );
+        }
+      },
+    ),
+
+    // Botão: concluir treino
+    IconButton(
+      tooltip: 'Concluir treino',
+      icon: const Icon(Icons.check),
+      onPressed: () async {
+        await repo.markDone(widget.workoutId, true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Treino concluído!')),
+        );
+        Navigator.pop(context); // ✅ volta pra tela anterior
+      },
+    ),
+  ],
+),
           body: _DetailBody(key: _bodyKey, workoutId: widget.workoutId),
           floatingActionButton: FloatingActionButton.extended(
             icon: const Icon(Icons.add),
