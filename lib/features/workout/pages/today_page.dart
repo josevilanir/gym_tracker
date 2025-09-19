@@ -48,88 +48,161 @@ class _TodayContent extends ConsumerWidget {
     final repo = ref.watch(workoutRepoProvider);
 
     return StreamBuilder<List<Workout>>(
-      // escuta os treinos ativos em tempo real
       stream: repo.watchActiveWorkouts(),
       builder: (context, snapshot) {
         final items = snapshot.data ?? [];
 
-        if (items.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Text('Sem treinos ativos.'),
-                SizedBox(height: 8),
-                Text('Crie um novo ou use uma rotina salva.'),
-                SizedBox(height: 16),
-                _StartFab(inline: true),
-              ],
-            ),
-          );
-        }
+        return FutureBuilder(
+          future: Future.wait([
+            repo.countWorkoutsThisMonth(),
+            repo.getTrainingStreak(),
+            repo.countExercisesThisMonth(),
+          ]),
+          builder: (context, AsyncSnapshot<List<int>> metricsSnap) {
+            if (metricsSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final metrics = metricsSnap.data ?? [0, 0, 0];
+            final workoutsMonth = metrics[0];
+            final streak = metrics[1];
+            final volumeMonth = metrics[2];
 
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // HEADER
-            Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: Padding(
+            if (items.isEmpty) {
+              return ListView(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hoje',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${items.length} treino(s) ativo(s)',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // LISTA DE TREINOS ATIVOS
-            ...items.map((w) {
-              final date = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
-              final dateStr = DateFormat('dd/MM, HH:mm').format(date);
-              final title =
-                  (w.title?.trim().isNotEmpty ?? false) ? w.title! : 'Treino sem nome';
-
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.fitness_center),
-                  title: Text(title),
-                  subtitle: Text('Iniciado em $dateStr'),
-                  trailing: IconButton(
-                    tooltip: 'Concluir',
-                    icon: const Icon(Icons.check_circle_outline),
-                    onPressed: () async {
-                      await repo.markDone(w.id, true);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Treino concluído!')),
-                        );
-                      }
-                    },
+                children: [
+                  // HEADER de métricas mesmo sem treino ativo
+                  _MetricsHeader(
+                    workoutsMonth: workoutsMonth,
+                    streak: streak,
+                    volumeMonth: volumeMonth,
                   ),
-                  onTap: () =>
-                      context.pushNamed('workout_detail', pathParameters: {'id': w.id}),
-                ),
+                  const SizedBox(height: 32),
+                  const Center(child: Text('Sem treinos ativos.')),
+                  const SizedBox(height: 8),
+                  const Center(child: Text('Crie um novo ou use uma rotina salva.')),
+                  const SizedBox(height: 16),
+                  const Center(child: _StartFab(inline: true)),
+                ],
               );
-            }),
-          ],
+            }
+
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _MetricsHeader(
+                  workoutsMonth: workoutsMonth,
+                  streak: streak,
+                  volumeMonth: volumeMonth,
+                ),
+                const SizedBox(height: 12),
+                ...items.map((w) {
+                  final date = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+                  final dateStr = DateFormat('dd/MM, HH:mm').format(date);
+                  final title =
+                      (w.title?.trim().isNotEmpty ?? false) ? w.title! : 'Treino sem nome';
+
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.fitness_center),
+                      title: Text(title),
+                      subtitle: Text('Iniciado em $dateStr'),
+                      trailing: IconButton(
+                        tooltip: 'Concluir',
+                        icon: const Icon(Icons.check_circle_outline),
+                        onPressed: () async {
+                          await repo.markDone(w.id, true);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Treino concluído!')),
+                            );
+                          }
+                        },
+                      ),
+                      onTap: () => context.pushNamed(
+                        'workout_detail',
+                        pathParameters: {'id': w.id},
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            );
+          },
         );
       },
+    );
+  }
+}
+
+/// Widget de header de métricas
+class _MetricsHeader extends StatelessWidget {
+  final int workoutsMonth;
+  final int streak;
+  final int volumeMonth;
+
+  const _MetricsHeader({
+    required this.workoutsMonth,
+    required this.streak,
+    required this.volumeMonth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primaryContainer;
+    final onColor = Theme.of(context).colorScheme.onPrimaryContainer;
+
+    return Card(
+      color: color,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _MetricItem(
+              label: 'Treinos no mês',
+              value: workoutsMonth.toString(),
+              onColor: onColor,
+            ),
+            _MetricItem(
+              label: 'Streak',
+              value: '${streak}d',
+              onColor: onColor,
+            ),
+            _MetricItem(
+              label: 'Exercícios no mês',
+              value: volumeMonth.toString(),
+              onColor: onColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color onColor;
+
+  const _MetricItem({
+    required this.label,
+    required this.value,
+    required this.onColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: onColor)),
+        const SizedBox(height: 4),
+        Text(label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onColor)),
+      ],
     );
   }
 }

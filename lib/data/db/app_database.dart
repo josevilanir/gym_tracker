@@ -200,6 +200,67 @@ class AppDatabase extends _$AppDatabase {
       ),
     );
   }
+
+   /// Conta quantos treinos foram concluídos no mês atual
+  Future<int> countWorkoutsThisMonth() async {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1).millisecondsSinceEpoch;
+
+    final query = await (select(workouts)
+          ..where((w) =>
+              w.done.equals(true) & w.dateEpoch.isBiggerOrEqualValue(startOfMonth)))
+        .get();
+
+    return query.length;
+  }
+
+  /// Conta os dias consecutivos treinando (streak simples)
+  Future<int> getTrainingStreak() async {
+    final today = DateTime.now();
+    int streak = 0;
+
+    for (int i = 0; i < 30; i++) {
+      final checkDate = today.subtract(Duration(days: i));
+      final startOfDay =
+          DateTime(checkDate.year, checkDate.month, checkDate.day).millisecondsSinceEpoch;
+      final endOfDay = DateTime(checkDate.year, checkDate.month, checkDate.day, 23, 59, 59)
+          .millisecondsSinceEpoch;
+
+      final workoutsDay = await (select(workouts)
+            ..where((w) =>
+                w.done.equals(true) &
+                w.dateEpoch.isBiggerOrEqualValue(startOfDay) &
+                w.dateEpoch.isSmallerOrEqualValue(endOfDay)))
+          .get();
+
+      if (workoutsDay.isEmpty) break;
+      streak++;
+    }
+
+    return streak;
+  }
+
+  /// Volume total no mês (aqui simplificado = nº de exercícios concluídos em treinos do mês)
+  Future<int> countExercisesThisMonth() async {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1).millisecondsSinceEpoch;
+
+    final workoutsThisMonth = await (select(workouts)
+          ..where((w) =>
+              w.done.equals(true) & w.dateEpoch.isBiggerOrEqualValue(startOfMonth)))
+        .get();
+
+    if (workoutsThisMonth.isEmpty) return 0;
+
+    final workoutIds = workoutsThisMonth.map((w) => w.id).toList();
+
+    final query = await (select(workoutExercises)
+          ..where((we) => we.workoutId.isIn(workoutIds)))
+        .get();
+
+    return query.length;
+  }
+
 }
 
 // --------- Conexão com SQLite (mobile via sqflite executor) ---------

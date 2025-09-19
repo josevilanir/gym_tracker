@@ -139,6 +139,10 @@ class WorkoutRepository {
     return total;
   }
 
+  Future<int> countWorkoutsThisMonth() => db.countWorkoutsThisMonth();
+  Future<int> getTrainingStreak() => db.getTrainingStreak();
+  Future<int> countExercisesThisMonth() => db.countExercisesThisMonth();
+
   // ---------- Templates ----------
   Future<List<Template>> listTemplates() => db.listTemplates();
 
