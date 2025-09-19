@@ -199,4 +199,38 @@ class WorkoutRepository {
 
   ({int startEpoch, int endEpoch}) monthBounds(DateTime now) => db.monthBounds(now);
 
+    // ---------- Métricas agregadas para gráficos ----------
+  /// Retorna o volume diário (nº de séries) por dia no intervalo [start, end] (inclusive).
+  Future<List<({DateTime day, int volume})>> dailyVolume({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    // normaliza para começo/fim do dia
+    DateTime startDay = DateTime(start.year, start.month, start.day);
+    DateTime endDay = DateTime(end.year, end.month, end.day, 23, 59, 59);
+
+    final workouts = await listFinishedWorkoutsBetween(start: startDay, end: endDay);
+
+    // agrega volume por dia (volume = nº de séries dos treinos concluídos daquele dia)
+    final Map<DateTime, int> perDay = {};
+
+    for (final w in workouts) {
+      final wDate = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+      final dayKey = DateTime(wDate.year, wDate.month, wDate.day); // início do dia
+      final sets = await countSetsInWorkout(w.id);
+      perDay.update(dayKey, (old) => old + sets, ifAbsent: () => sets);
+    }
+
+    // garante dias “zerados” no intervalo (para o gráfico ficar contínuo)
+    final days = <({DateTime day, int volume})>[];
+    for (DateTime d = startDay;
+        !d.isAfter(endDay);
+        d = d.add(const Duration(days: 1))) {
+      final key = DateTime(d.year, d.month, d.day);
+      days.add((day: key, volume: perDay[key] ?? 0));
+    }
+
+    return days;
+  }
+
 }
