@@ -179,4 +179,24 @@ class WorkoutRepository {
     /// Stream: treinos ativos (done = false)
   Stream<List<Workout>> watchActiveWorkouts() => db.watchActiveWorkoutsDesc();
 
+  // ---------- Histórico / Filtros ----------
+  Future<List<Workout>> listFinishedWorkoutsBetween({
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final startEpoch =
+        DateTime(start.year, start.month, start.day, 0, 0, 0).millisecondsSinceEpoch;
+    final endEpoch =
+        DateTime(end.year, end.month, end.day, 23, 59, 59).millisecondsSinceEpoch;
+    return db.listFinishedWorkoutsBetweenDesc(startEpoch: startEpoch, endEpoch: endEpoch);
+  }
+
+  Future<int> countExercisesInWorkout(String workoutId) =>
+      db.countExercisesInWorkout(workoutId);
+
+  Future<int> countSetsInWorkout(String workoutId) =>
+      db.countSetsInWorkout(workoutId);
+
+  ({int startEpoch, int endEpoch}) monthBounds(DateTime now) => db.monthBounds(now);
+
 }

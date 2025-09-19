@@ -261,6 +261,51 @@ class AppDatabase extends _$AppDatabase {
     return query.length;
   }
 
+  /// Lista treinos concluídos (done = true) entre [startEpoch] e [endEpoch], ordenados por data desc
+  Future<List<Workout>> listFinishedWorkoutsBetweenDesc({
+    required int startEpoch,
+    required int endEpoch,
+  }) {
+    final q = (select(workouts)
+          ..where((w) =>
+              w.done.equals(true) &
+              w.dateEpoch.isBiggerOrEqualValue(startEpoch) &
+              w.dateEpoch.isSmallerOrEqualValue(endEpoch))
+          ..orderBy([(w) => OrderingTerm.desc(w.dateEpoch)]));
+    return q.get();
+  }
+
+  /// Conta quantos exercícios há em um treino
+  Future<int> countExercisesInWorkout(String workoutId) async {
+    final rows = await (select(workoutExercises)
+          ..where((we) => we.workoutId.equals(workoutId)))
+        .get();
+    return rows.length;
+  }
+
+  /// Conta quantas séries existem em um treino
+  Future<int> countSetsInWorkout(String workoutId) async {
+    // busca os exercises do treino
+    final weRows = await (select(workoutExercises)
+          ..where((we) => we.workoutId.equals(workoutId)))
+        .get();
+    if (weRows.isEmpty) return 0;
+
+    final ids = weRows.map((e) => e.id).toList();
+    final sets = await (select(setEntries)..where((s) => s.workoutExerciseId.isIn(ids))).get();
+    return sets.length;
+  }
+
+  /// Helper: retorna início e fim (epoch) de um intervalo "mês atual"
+  ({int startEpoch, int endEpoch}) monthBounds(DateTime now) {
+    final start = DateTime(now.year, now.month, 1).millisecondsSinceEpoch;
+    // fim = último segundo do mês
+    final nextMonth = DateTime(now.year, now.month + 1, 1)
+        .subtract(const Duration(seconds: 1))
+        .millisecondsSinceEpoch;
+    return (startEpoch: start, endEpoch: nextMonth);
+  }
+
 }
 
 // --------- Conexão com SQLite (mobile via sqflite executor) ---------
