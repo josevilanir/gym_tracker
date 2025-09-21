@@ -232,11 +232,7 @@ class _StartFab extends ConsumerWidget {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 16, right: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          top: 8,
-        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         child: FutureBuilder<List<Template>>(
           future: repo.listTemplates(),
           builder: (context, snap) {
@@ -245,25 +241,37 @@ class _StartFab extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Iniciar treino', style: Theme.of(context).textTheme.titleLarge),
+                Text('Iniciar a partir de rotinas', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
+                // ✅ Criar NOVA ROTINA (começa vazia)
                 FilledButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('Criar treino do zero'),
-                  onPressed: () {
+                  icon: const Icon(Icons.auto_awesome_motion_outlined),
+                  label: const Text('Criar nova rotina'),
+                  onPressed: () async {
                     Navigator.pop(context);
-                    context.pushNamed('workout_new');
+                    // cria um treino vazio para você EDITAR e depois salvar como rotina
+                    final id = await repo.createWorkout(); // sem exercícios
+                    if (context.mounted) {
+                      // Dica: ao abrir o detalhe, o usuário pode tocar no ícone de "Salvar como rotina"
+                      context.pushNamed('workout_detail', pathParameters: {'id': id});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Dica: toque em “Salvar como rotina” no topo.'),
+                        ),
+                      );
+                    }
                   },
                 ),
-                const SizedBox(height: 12),
-                Text('Ou use uma rotina salva:', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 16),
+                Text('Ou use uma rotina existente', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 if (templates.isEmpty)
                   const Text('Nenhuma rotina salva ainda.')
                 else
                   ...templates.map((t) => ListTile(
-                        leading: const Icon(Icons.auto_awesome_motion),
+                        leading: const Icon(Icons.bookmark_added_outlined),
                         title: Text(t.name),
+                        subtitle: const Text('Toque para começar agora'),
                         onTap: () async {
                           final newId = await repo.createWorkoutFromTemplate(
                             templateId: t.id,
