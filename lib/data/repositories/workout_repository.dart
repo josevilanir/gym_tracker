@@ -1,6 +1,5 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
-
 import '../../core/enums.dart';
 import '../db/app_database.dart';
 
@@ -53,10 +52,25 @@ class WorkoutRepository {
   }
 
   // ---------- Workouts ----------
-  Future<String> createWorkout({String? title, String? notes}) {
-    final id = _uuid.v4();
-    return db.createWorkout(id: id, date: DateTime.now(), title: title, notes: notes);
+  Future<String> createWorkout({String? title}) async {
+    final id = const Uuid().v4();
+    await db.into(db.workouts).insert(WorkoutsCompanion.insert(
+      id: id,
+      title: Value(title),
+      dateEpoch: DateTime.now().millisecondsSinceEpoch,
+      done: const Value(false),
+    ));
+    return id;
   }
+
+  // --- remoções ---
+  Future<void> deleteSet(String setId) => db.deleteSet(setId);
+  Future<void> deleteWorkoutExercise(String workoutExerciseId) =>
+      db.deleteWorkoutExercise(workoutExerciseId);
+
+  // --- catálogo: criar exercício ---
+  Future<String> createExercise({required String name, required String muscleGroup}) =>
+      db.createExercise(name: name, muscleGroup: muscleGroup);
 
   Future<Workout?> getWorkout(String id) => db.getWorkoutById(id);
   Future<void> markDone(String workoutId, bool done) => db.setWorkoutDone(workoutId, done);
