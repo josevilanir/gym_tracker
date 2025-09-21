@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../workout/controllers/providers.dart';  // ✅ certo
+import '../../workout/controllers/providers.dart';
 import '../../../data/db/app_database.dart';
 
 class CatalogPage extends ConsumerWidget {
@@ -10,7 +10,7 @@ class CatalogPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final repo = ref.watch(workoutRepoProvider); // ✅ corrigido
+    final repo = ref.watch(workoutRepoProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Catálogo de Exercícios')),
@@ -22,16 +22,7 @@ class CatalogPage extends ConsumerWidget {
           }
           final items = snap.data ?? [];
           if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.search_off, size: 48, color: Colors.grey),
-                  const SizedBox(height: 8),
-                  const Text('Nenhum exercício cadastrado ainda.'),
-                ],
-              ),
-            );
+            return const Center(child: Text('Nenhum exercício cadastrado ainda.'));
           }
           return ListView.builder(
             itemCount: items.length,
@@ -47,6 +38,58 @@ class CatalogPage extends ConsumerWidget {
             },
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddExerciseDialog(context, ref),
+        icon: const Icon(Icons.add),
+        label: const Text('Adicionar'),
+      ),
+    );
+  }
+
+  void _showAddExerciseDialog(BuildContext context, WidgetRef ref) {
+    final nameCtrl = TextEditingController();
+    final groupCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Novo exercício'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Nome'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: groupCtrl,
+              decoration: const InputDecoration(labelText: 'Grupo muscular'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              final group = groupCtrl.text.trim();
+              if (name.isEmpty || group.isEmpty) return;
+              await ref.read(workoutRepoProvider).createExercise(
+                    name: name,
+                    muscleGroup: group,
+                  );
+              if (context.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Exercício "$name" adicionado.')),
+                );
+              }
+            },
+            child: const Text('Salvar'),
+          ),
+        ],
       ),
     );
   }
