@@ -1,6 +1,6 @@
 // lib/data/db/app_database.dart
 import 'dart:io';
-
+import 'package:uuid/uuid.dart';
 import 'package:drift/drift.dart';
 import 'package:drift_sqflite/drift_sqflite.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -305,6 +305,30 @@ class AppDatabase extends _$AppDatabase {
         .millisecondsSinceEpoch;
     return (startEpoch: start, endEpoch: nextMonth);
   }
+
+  // --- REMOVER UMA SÉRIE (set) ---
+Future<void> deleteSet(String setId) async {
+  await (delete(setEntries)..where((s) => s.id.equals(setId))).go();
+}
+
+// --- REMOVER UM EXERCÍCIO DO TREINO (tabela workout_exercises) ---
+Future<void> deleteWorkoutExercise(String workoutExerciseId) async {
+  await (delete(workoutExercises)..where((we) => we.id.equals(workoutExerciseId))).go();
+}
+
+// --- CRIAR EXERCÍCIO NO CATÁLOGO ---
+Future<String> createExercise({
+  required String name,
+  required String muscleGroup,
+}) async {
+  final id = const Uuid().v4();
+  await into(exercises).insert(ExercisesCompanion.insert(
+    id: id,
+    name: name,
+    muscleGroup: muscleGroup,
+  ));
+  return id;
+}
 
 }
 
