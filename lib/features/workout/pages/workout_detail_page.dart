@@ -296,8 +296,11 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
     searchCtrl.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+@override
+Widget build(BuildContext context) {
+    // pegue o repositório via Riverpod
+    final repo = ref.read(workoutRepoProvider);
+
     if (_list.isEmpty) {
       return const Center(child: Text('Sem exercícios neste treino.'));
     }
@@ -316,6 +319,8 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
           ),
         ),
         const SizedBox(height: 16),
+
+        // lista reordenável de exercícios
         ReorderableListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -330,12 +335,62 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
           },
           itemBuilder: (context, i) {
             final we = _list[i];
+
             return Padding(
-              key: ValueKey(we.id),
+              key: ValueKey(we.id), // chave usada pelo Reorderable
               padding: const EdgeInsets.only(bottom: 12),
-              child: _ExerciseTile(
-                we: we,
-                onChanged: reload,
+              child: Dismissible(
+                key: ValueKey('dismiss-${we.id}'), // chave do swipe
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  color: Colors.red.withOpacity(0.12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: const Icon(Icons.delete, color: Colors.red),
+                ),
+                confirmDismiss: (_) async {
+                  // diálogo rápido de confirmação (opcional)
+                  return await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Remover exercício'),
+                          content: const Text('Tem certeza que deseja remover este exercício da rotina?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancelar'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Remover'),
+                            ),
+                          ],
+                        ),
+                      ) ??
+                      false;
+                },
+                onDismissed: (_) async {
+                  // remove no banco
+                  await repo.deleteWorkoutExercise(we.id);
+
+                  // atualiza a UI localmente para dar sensação de velocidade
+                  setState(() {
+                    _list.removeWhere((e) => e.id == we.id);
+                  });
+
+                  // recarrega dos dados e re-calcula volume, se seu reload fizer isso
+                  await reload();
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Exercício removido da rotina.')),
+                    );
+                  }
+                },
+                child: _ExerciseTile(
+                  we: we,
+                  onChanged: reload, // mantém seu fluxo atual de atualização
+                ),
               ),
             );
           },
@@ -383,6 +438,7 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Cabeçalho do exercício
                 Row(
                   children: [
                     const Icon(Icons.drag_handle),
@@ -423,46 +479,83 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 8),
+
+                // Lista de séries (com excluir)
                 FutureBuilder<List<SetEntry>>(
                   future: repo.listSets(widget.we.id),
                   builder: (context, snapSets) {
                     final sets = snapSets.data ?? [];
+
                     return Column(
                       children: [
                         if (sets.isNotEmpty)
                           Column(
-                            children: sets
-                                .map(
-                                  (s) => ListTile(
-                                    dense: true,
-                                    leading: CircleAvatar(child: Text('${s.setIndex}')),
-                                    title: Text('Reps: ${s.reps}'),
-                                    subtitle:
-                                        Text('Peso: ${s.weight.toStringAsFixed(1)} kg'),
-                                  ),
-                                )
-                                .toList(),
+                            children: sets.map((s) {
+                              return ListTile(
+                                dense: true,
+                                leading: CircleAvatar(child: Text('${s.setIndex}')),
+                                title: Text('Reps: ${s.reps}'),
+                                subtitle: Text('Peso: ${s.weight.toStringAsFixed(1)} kg'),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  tooltip: 'Remover série',
+                                  onPressed: () async {
+                                    // confirmação rápida (opcional)
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Remover série'),
+                                        content: Text(
+                                          'Remover a série ${s.setIndex} (${s.reps} reps, ${s.weight.toStringAsFixed(1)} kg)?',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: const Text('Cancelar'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            child: const Text('Remover'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+
+                                    if (confirm != true) return;
+
+                                    await repo.deleteSet(s.id);
+                                    if (!mounted) return;
+                                    await widget.onChanged(); // recarrega lista e volume
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Série removida.')),
+                                    );
+                                  },
+                                ),
+                              );
+                            }).toList(),
                           ),
+
                         const SizedBox(height: 8),
+
+                        // Adicionar nova série
                         Row(
                           children: [
                             Expanded(
                               child: TextField(
                                 controller: _repsCtrl,
                                 keyboardType: TextInputType.number,
-                                decoration:
-                                    const InputDecoration(labelText: 'Reps'),
+                                decoration: const InputDecoration(labelText: 'Reps'),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: TextField(
                                 controller: _weightCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(
-                                    decimal: true),
-                                decoration:
-                                    const InputDecoration(labelText: 'Peso (kg)'),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: const InputDecoration(labelText: 'Peso (kg)'),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -470,8 +563,7 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                               icon: const Icon(Icons.add),
                               label: const Text('Adicionar'),
                               onPressed: () async {
-                                final reps =
-                                    int.tryParse(_repsCtrl.text.trim());
+                                final reps = int.tryParse(_repsCtrl.text.trim());
                                 final weight = double.tryParse(
                                   _weightCtrl.text.trim().replaceAll(',', '.'),
                                 );
