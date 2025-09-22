@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 
 import '../controllers/providers.dart';
 import '../../../data/db/app_database.dart';
@@ -48,39 +49,43 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     return repo.listFinishedWorkoutsBetween(start: start, end: end);
   }
 
-  /// Volume diário simples (nº de séries) – **só dias com treino**.
+  /// Volume diário simples (nº de séries) – inclui dias sem treino com zero
   Future<List<({DateTime day, int volume})>> _loadDailyVolume() async {
     final repo = ref.read(workoutRepoProvider);
     final (start, end) = _currentBounds();
 
     final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    final endDay = DateTime(end.year, end.month, end.day);
 
-    final workouts = await repo.listFinishedWorkoutsBetween(start: startDay, end: endDay);
+    final workouts = await repo.listFinishedWorkoutsBetween(
+      start: startDay,
+      end: DateTime(endDay.year, endDay.month, endDay.day, 23, 59, 59),
+    );
+
     final Map<DateTime, int> perDay = {};
-
     for (final w in workouts) {
-      final wDate = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
-      final key = DateTime(wDate.year, wDate.month, wDate.day);
+      final d = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+      final key = DateTime(d.year, d.month, d.day);
       final sets = await repo.countSetsInWorkout(w.id);
       perDay.update(key, (old) => old + sets, ifAbsent: () => sets);
     }
 
-    final result = perDay.entries
-        .map((e) => (day: e.key, volume: e.value))
-        .toList()
-      ..sort((a, b) => a.day.compareTo(b.day));
-
-    return result;
+    final totalDays = endDay.difference(startDay).inDays + 1;
+    return List.generate(totalDays, (i) {
+      final d = DateTime(startDay.year, startDay.month, startDay.day + i);
+      final key = DateTime(d.year, d.month, d.day);
+      return (day: d, volume: perDay[key] ?? 0);
+    });
   }
 
+  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(workoutRepoProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Histórico'),
+        title: const Text('Acompanhamento'),
         actions: [
           IconButton(
             tooltip: 'Escolher intervalo…',
@@ -108,6 +113,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.add),
+        label: const Text('Registrar treino'),
+        onPressed: () => _openRegisterPastWorkout(context),
+      ),
       body: Column(
         children: [
           const SizedBox(height: 8),
@@ -131,7 +141,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        _VolumeChartCard(volumes: volumes),
+                        _VolumeChartSimpleCard(volumes: volumes),
                         const SizedBox(height: 12),
 
                         if (workouts.isEmpty)
@@ -204,7 +214,132 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       ),
     );
   }
+
+  Future<void> _openRegisterPastWorkout(BuildContext context) async {
+    final repo = ref.read(workoutRepoProvider);
+    final now = DateTime.now();
+
+    DateTime selected = DateTime(now.year, now.month, now.day, now.hour, now.minute);
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final titleCtrl = TextEditingController();
+
+        return Padding(
+          padding: MediaQuery.of(ctx).viewInsets.add(const EdgeInsets.all(16)),
+          child: FutureBuilder<List<Template>>(
+            future: repo.listTemplates(),
+            builder: (context, snap) {
+              final templates = snap.data ?? [];
+
+              return StatefulBuilder(
+                builder: (context, setLocal) {
+                  return SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Registrar treino em outra data',
+                            style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 12),
+
+                        TextField(
+                          controller: titleCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Título (opcional)',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Seletor de data/hora
+                        ListTile(
+                          leading: const Icon(Icons.event),
+                          title: Text(DateFormat('dd/MM/yyyy – HH:mm').format(selected)),
+                          subtitle: const Text('Toque para alterar data e hora'),
+                          onTap: () async {
+                            final d = await showDatePicker(
+                              context: context,
+                              firstDate: DateTime(now.year - 2),
+                              lastDate: DateTime(now.year + 1),
+                              initialDate: selected,
+                            );
+                            if (d == null) return;
+                            final t = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(selected),
+                            );
+                            setLocal(() {
+                              selected = DateTime(
+                                d.year, d.month, d.day,
+                                t?.hour ?? selected.hour,
+                                t?.minute ?? selected.minute,
+                              );
+                            });
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+                        Text('Começar usando uma rotina?', style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 8),
+
+                        if (templates.isEmpty)
+                          const Text('Nenhuma rotina salva. Você pode registrar um treino vazio.')
+                        else
+                          ...templates.map((t) => ListTile(
+                                leading: const Icon(Icons.bookmark_added_outlined),
+                                title: Text(t.name),
+                                trailing: TextButton(
+                                  child: const Text('Usar'),
+                                  onPressed: () async {
+                                    final wid = await repo.createWorkoutFromTemplateAt(
+                                      templateId: t.id,
+                                      date: selected,
+                                      title: titleCtrl.text.trim().isEmpty ? t.name : titleCtrl.text.trim(),
+                                      done: true, // registro retroativo normalmente já concluído
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                      context.pushNamed('workout_detail', pathParameters: {'id': wid});
+                                    }
+                                  },
+                                ),
+                              )),
+
+                        const Divider(height: 24),
+
+                        FilledButton.icon(
+                          icon: const Icon(Icons.playlist_add),
+                          label: const Text('Registrar treino vazio nessa data'),
+                          onPressed: () async {
+                            final wid = await repo.createWorkoutAt(
+                              date: selected,
+                              title: titleCtrl.text.trim().isEmpty ? null : titleCtrl.text.trim(),
+                              done: true,
+                            );
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              context.pushNamed('workout_detail', pathParameters: {'id': wid});
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    setState(() {}); // atualiza a lista/gráfico depois do cadastro
+  }
 }
+
+// ---------- componentes auxiliares (mantidos do dia anterior) ----------
 
 class _QuickFilters extends StatelessWidget {
   final _QuickRange current;
@@ -249,32 +384,26 @@ class _ChipStat extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _ChipStat({
-    required this.icon,
-    required this.label,
-  });
+  const _ChipStat({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      avatar: Icon(icon, size: 18),
-      label: Text(label),
-    );
+    return Chip(avatar: Icon(icon, size: 18), label: Text(label));
   }
 }
 
-// ------------- GRÁFICO DE VOLUME (versão simples estável) -------------
+// --------- Gráfico simples (layout por Row/Expanded) ---------
 
-class _VolumeChartCard extends StatelessWidget {
+class _VolumeChartSimpleCard extends StatelessWidget {
   final List<({DateTime day, int volume})> volumes;
-  const _VolumeChartCard({required this.volumes});
+  const _VolumeChartSimpleCard({required this.volumes});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final title = volumes.isEmpty
-        ? 'Sem dados no período'
-        : 'Séries por dia (${volumes.length}d)';
+    final values = volumes.map((e) => e.volume).toList();
+    final labels = volumes.map((e) => DateFormat('dd/MM').format(e.day)).toList();
+    final title = 'Séries por dia (${volumes.length}d)';
 
     return Card(
       child: Padding(
@@ -286,17 +415,11 @@ class _VolumeChartCard extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(
               height: 160,
-              child: CustomPaint(
-                painter: _BarChartPainter(
-                  data: volumes.map((e) => e.volume).toList(),
-                  labels: volumes
-                      .map((e) => DateFormat('dd/MM').format(e.day))
-                      .toList(),
-                  barColor: cs.primary,
-                  axisColor: cs.outlineVariant,
-                  textColor: Theme.of(context).textTheme.bodySmall?.color ??
-                      cs.onSurfaceVariant,
-                ),
+              child: _BarsRow(
+                values: values,
+                labels: labels,
+                barColor: cs.primary,
+                textColor: Theme.of(context).textTheme.bodySmall?.color ?? cs.onSurfaceVariant,
               ),
             ),
           ],
@@ -306,83 +429,84 @@ class _VolumeChartCard extends StatelessWidget {
   }
 }
 
-class _BarChartPainter extends CustomPainter {
-  final List<int> data;
+class _BarsRow extends StatelessWidget {
+  final List<int> values;
   final List<String> labels;
   final Color barColor;
-  final Color axisColor;
   final Color textColor;
 
-  _BarChartPainter({
-    required this.data,
+  const _BarsRow({
+    required this.values,
     required this.labels,
     required this.barColor,
-    required this.axisColor,
     required this.textColor,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paintAxis = Paint()
-      ..color = axisColor
-      ..strokeWidth = 1;
-
-    const leftPad = 28.0;
-    const bottomPad = 20.0;
-    const topPad = 8.0;
-    const rightPad = 8.0;
-
-    final chartW = size.width - leftPad - rightPad;
-    final chartH = size.height - topPad - bottomPad;
-
-    // eixos
-    final origin = Offset(leftPad, size.height - bottomPad);
-    canvas.drawLine(origin, Offset(size.width - rightPad, size.height - bottomPad), paintAxis);
-    canvas.drawLine(origin, Offset(leftPad, topPad), paintAxis);
-
-    if (data.isEmpty) return;
-
-    final maxVal = data.reduce(math.max).toDouble();
-    final barW = chartW / data.length * 0.6;
-    final gap = (chartW / data.length - barW);
-
-    final barPaint = Paint()..color = barColor;
-
-    TextPainter tp(String s) {
-      final ts = TextSpan(text: s, style: TextStyle(fontSize: 10, color: textColor));
-      final t = TextPainter(text: ts, textDirection: ui.TextDirection.ltr);
-      t.layout();
-      return t;
+  Widget build(BuildContext context) {
+    if (values.isEmpty) {
+      return const Center(child: Text('Sem dados no período'));
     }
 
-    // mostrar ~7 labels no eixo X
-    final step = math.max(1, (data.length / 7).floor());
+    final maxVal = values.reduce((a, b) => a > b ? a : b);
+    final n = values.length;
 
-    for (int i = 0; i < data.length; i++) {
-      final x = leftPad + i * (barW + gap) + gap / 2;
-      final h = maxVal == 0 ? 0.0 : (data[i] / maxVal) * chartH; // double
-      final rect = Rect.fromLTWH(x, origin.dy - h, barW, h);
-      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(4)), barPaint);
-
-      if (i % step == 0 || i == data.length - 1) {
-        final lbl = tp(labels[i]);
-        final lx = x + barW / 2 - lbl.width / 2;
-        final ly = size.height - bottomPad + 2;
-        lbl.paint(canvas, Offset(lx, ly));
+    // até 6 rótulos: início/meio/fim distribuídos
+    final desired = n <= 6 ? n : 6;
+    final Set<int> labelIdxs = {};
+    if (n == 1) {
+      labelIdxs.add(0);
+    } else {
+      for (int i = 0; i < desired; i++) {
+        final idx = ((i * (n - 1)) / (desired - 1)).round();
+        labelIdxs.add(idx);
       }
     }
 
-    // valor máximo no topo (referência)
-    final maxLbl = tp(maxVal.toInt().toString());
-    maxLbl.paint(canvas, const Offset(4, topPad - 2));
-  }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(n, (i) {
+        final v = values[i];
+        final hFactor = maxVal == 0 ? 0.0 : (v / maxVal);
 
-  @override
-  bool shouldRepaint(covariant _BarChartPainter oldDelegate) {
-    return oldDelegate.data != data ||
-        oldDelegate.labels != labels ||
-        oldDelegate.barColor != barColor ||
-        oldDelegate.axisColor != axisColor ||
-        oldDelegate.textColor != textColor;
+        return Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: hFactor,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        color: barColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 14,
+                child: Center(
+                  child: labelIdxs.contains(i)
+                      ? FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            labels[i],
+                            style: TextStyle(fontSize: 10, color: textColor),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
   }
 }
