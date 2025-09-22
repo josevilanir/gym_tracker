@@ -247,4 +247,74 @@ class WorkoutRepository {
     return days;
   }
 
+   // Cria um treino com data/hora específica (vazio, sem copiar exercícios)
+  Future<String> createWorkoutAt({
+    required DateTime date,
+    String? title,
+    bool done = false,
+  }) async {
+    final id = const Uuid().v4();
+    await db.into(db.workouts).insert(
+      WorkoutsCompanion.insert(
+        id: id,
+        title: Value(title),
+        dateEpoch: DateTime(
+          date.year, date.month, date.day, date.hour, date.minute, date.second,
+        ).millisecondsSinceEpoch,
+        done: Value(done),
+      ),
+    );
+    return id;
+  }
+
+  /// Atualiza a data/hora de um treino existente
+  Future<void> updateWorkoutDate(String workoutId, DateTime date) async {
+    await (db.update(db.workouts)..where((w) => w.id.equals(workoutId))).write(
+      WorkoutsCompanion(
+        dateEpoch: Value(DateTime(
+          date.year, date.month, date.day, date.hour, date.minute, date.second,
+        ).millisecondsSinceEpoch),
+      ),
+    );
+  }
+
+  /// Atualiza flags/título (útil para marcar como concluído após criar)
+  Future<void> updateWorkoutMeta(
+    String workoutId, {
+    bool? done,
+    String? title,
+  }) async {
+    await (db.update(db.workouts)..where((w) => w.id.equals(workoutId))).write(
+      WorkoutsCompanion(
+        done: done == null ? const Value.absent() : Value(done),
+        title: title == null ? const Value.absent() : Value(title),
+      ),
+    );
+  }
+
+  /// ✅ Cria um treino a partir de uma rotina **já existente** DEFININDO a data/hora
+  /// Usa o SEU método existente `createWorkoutFromTemplate(...)` e depois ajusta a data.
+  Future<String> createWorkoutFromTemplateAt({
+    required String templateId,
+    required DateTime date,
+    String? title,
+    bool done = false,
+  }) async {
+    // 1) usa o método que você já tem para gerar o treino a partir do template
+    //    (ajuste a assinatura abaixo caso no seu repo tenha outros parâmetros)
+    final wid = await createWorkoutFromTemplate(
+      templateId: templateId,
+      title: title,
+    );
+
+    // 2) atualiza a data/hora conforme escolhido no Histórico
+    await updateWorkoutDate(wid, date);
+
+    // 3) se quiser marcar como concluído de imediato (registro retroativo)
+    if (done) {
+      await updateWorkoutMeta(wid, done: true);
+    }
+
+    return wid;
+  }
 }
