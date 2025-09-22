@@ -292,25 +292,21 @@ class WorkoutRepository {
     );
   }
 
-  /// ✅ Cria um treino a partir de uma rotina **já existente** DEFININDO a data/hora
-  /// Usa o SEU método existente `createWorkoutFromTemplate(...)` e depois ajusta a data.
   Future<String> createWorkoutFromTemplateAt({
     required String templateId,
     required DateTime date,
     String? title,
     bool done = false,
   }) async {
-    // 1) usa o método que você já tem para gerar o treino a partir do template
-    //    (ajuste a assinatura abaixo caso no seu repo tenha outros parâmetros)
     final wid = await createWorkoutFromTemplate(
       templateId: templateId,
       title: title,
     );
 
-    // 2) atualiza a data/hora conforme escolhido no Histórico
+    
     await updateWorkoutDate(wid, date);
 
-    // 3) se quiser marcar como concluído de imediato (registro retroativo)
+
     if (done) {
       await updateWorkoutMeta(wid, done: true);
     }
