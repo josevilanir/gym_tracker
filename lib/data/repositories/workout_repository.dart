@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 import '../../core/enums.dart';
 import '../db/app_database.dart';
+import 'package:drift/drift.dart' show Value, InsertMode;
 
 class WorkoutRepository {
   final AppDatabase db;
@@ -9,30 +10,87 @@ class WorkoutRepository {
 
   WorkoutRepository(this.db);
 
-  // ---------- Seed ----------
-  Future<void> ensureSeed() async {
-    final existing = await db.getAllExercises();
-    if (existing.isNotEmpty) return;
+ // ----------- Seed (substitua sua função por esta) -----------
+Future<void> ensureSeed() async {
+  // evita duplicidade
+  final existing = await db.getAllExercises();
+  if (existing.isNotEmpty) return;
 
-    await db.insertExercise(ExercisesCompanion.insert(
-      id: _uuid.v4(), name: 'Supino reto',
-      muscleGroup: MuscleGroup.chest.name,
-      equipment: const Value('Barbell'),
-      isCustom: const Value(false),
-    ));
-    await db.insertExercise(ExercisesCompanion.insert(
-      id: _uuid.v4(), name: 'Remada curvada',
-      muscleGroup: MuscleGroup.back.name,
-      equipment: const Value('Barbell'),
-      isCustom: const Value(false),
-    ));
-    await db.insertExercise(ExercisesCompanion.insert(
-      id: _uuid.v4(), name: 'Agachamento livre',
-      muscleGroup: MuscleGroup.legs.name,
-      equipment: const Value('Barbell'),
-      isCustom: const Value(false),
-    ));
-  }
+  final _uuid = const Uuid();
+
+  // Tabela de seeds: ~5 por grupo muscular
+  final Map<String, List<Map<String, String>>> seeds = {
+    MuscleGroup.chest.name: [
+      {'name': 'Supino reto',                    'equipment': 'Barbell'},
+      {'name': 'Supino inclinado com halteres', 'equipment': 'Dumbbell'},
+      {'name': 'Crucifixo no banco',            'equipment': 'Dumbbell'},
+      {'name': 'Crossover na polia',            'equipment': 'Cable'},
+      {'name': 'Flexão de braços',              'equipment': 'Bodyweight'},
+    ],
+    MuscleGroup.back.name: [
+      {'name': 'Remada curvada',                'equipment': 'Barbell'},
+      {'name': 'Puxada frente (barra)',         'equipment': 'Machine'},
+      {'name': 'Remada baixa (cabo)',           'equipment': 'Cable'},
+      {'name': 'Barra fixa',                    'equipment': 'Bodyweight'},
+      {'name': 'Pullover com halter',           'equipment': 'Dumbbell'},
+    ],
+    MuscleGroup.legs.name: [
+      {'name': 'Agachamento livre',             'equipment': 'Barbell'},
+      {'name': 'Leg press',                     'equipment': 'Machine'},
+      {'name': 'Cadeira extensora',             'equipment': 'Machine'},
+      {'name': 'Mesa flexora',                  'equipment': 'Machine'},
+      {'name': 'Panturrilha em pé',             'equipment': 'Machine'},
+    ],
+    MuscleGroup.shoulders.name: [
+      {'name': 'Desenvolvimento com halteres',  'equipment': 'Dumbbell'},
+      {'name': 'Elevação lateral',              'equipment': 'Dumbbell'},
+      {'name': 'Elevação frontal',              'equipment': 'Dumbbell'},
+      {'name': 'Remada alta',                   'equipment': 'Barbell'},
+      {'name': 'Desenvolvimento Arnold',        'equipment': 'Dumbbell'},
+    ],
+    MuscleGroup.biceps.name: [
+      {'name': 'Rosca direta',                  'equipment': 'Barbell'},
+      {'name': 'Rosca alternada',               'equipment': 'Dumbbell'},
+      {'name': 'Rosca martelo',                 'equipment': 'Dumbbell'},
+      {'name': 'Rosca Scott',                   'equipment': 'Machine'},
+      {'name': 'Rosca concentrada',             'equipment': 'Dumbbell'},
+    ],
+    MuscleGroup.triceps.name: [
+      {'name': 'Tríceps testa',                 'equipment': 'Barbell'},
+      {'name': 'Tríceps corda (polia)',         'equipment': 'Cable'},
+      {'name': 'Mergulho em banco',             'equipment': 'Bodyweight'},
+      {'name': 'Tríceps francês',               'equipment': 'Dumbbell'},
+      {'name': 'Tríceps coice',                 'equipment': 'Dumbbell'},
+    ],
+    MuscleGroup.core.name: [
+      {'name': 'Prancha',                       'equipment': 'Bodyweight'},
+      {'name': 'Abdominal crunch',              'equipment': 'Bodyweight'},
+      {'name': 'Elevação de pernas',            'equipment': 'Bodyweight'},
+      {'name': 'Abdominal bicicleta',           'equipment': 'Bodyweight'},
+      {'name': 'Abdominal oblíquo',             'equipment': 'Bodyweight'},
+    ],
+  };
+
+  // Inserção em batch (mais rápido e atômico)
+  await db.batch((b) {
+    for (final entry in seeds.entries) {
+      final group = entry.key;
+      for (final ex in entry.value) {
+        b.insert(
+          db.exercises,
+          ExercisesCompanion.insert(
+            id: _uuid.v4(),
+            name: ex['name']!,
+            muscleGroup: group,              // sua coluna espera string: MuscleGroup.xxx.name
+            equipment: Value(ex['equipment']!),
+            isCustom: const Value(false),
+          ),
+          mode: InsertMode.insertOrIgnore,   // se rodar de novo, ignora duplicado
+        );
+      }
+    }
+  });
+}
 
   // ---------- Exercises ----------
   Future<List<Exercise>> allExercises() => db.getAllExercises();
