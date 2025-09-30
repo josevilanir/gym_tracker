@@ -451,19 +451,10 @@ class _BarsRow extends StatelessWidget {
     final maxVal = values.reduce((a, b) => a > b ? a : b);
     final n = values.length;
 
-    // --- rótulos: no máx. 4 datas distribuídas (início/meio/fim) ---
-    final maxLabels = n <= 4 ? n : 4;
-    final Set<int> labelIdxs = {};
-    if (n == 1) {
-      labelIdxs.add(0);
-    } else {
-      for (int i = 0; i < maxLabels; i++) {
-        final idx = ((i * (n - 1)) / (maxLabels - 1)).round();
-        labelIdxs.add(idx);
-      }
-    }
+    // ✅ mostrar rótulo em TODAS as barras
+    final Set<int> labelIdxs = {for (int i = 0; i < n; i++) i};
 
-    // --- largura das barras dentro do slot: dá respiro lateral ---
+    // largura da barra (respiro lateral)
     double widthFactor;
     if (n <= 6) {
       widthFactor = 0.55;
@@ -475,11 +466,21 @@ class _BarsRow extends StatelessWidget {
       widthFactor = 0.28;
     }
 
+    // barra mínima p/ dias zerados
+    const double minHeightFactor = 0.02;
+
+    // ajustes de rótulo para caber (ângulo e fonte menor)
+    final double labelAngle = -0.6; // ~ -34°
+    final double labelFont = (n > 12) ? 8 : 9;
+    final double labelBoxHeight = (n > 12) ? 22 : 18;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: List.generate(n, (i) {
         final v = values[i];
-        final hFactor = maxVal == 0 ? 0.0 : (v / maxVal);
+        final raw = maxVal == 0 ? 0.0 : (v / maxVal);
+        final hFactor = v == 0 ? minHeightFactor : raw;
+        final color = v == 0 ? barColor.withOpacity(0.28) : barColor;
 
         return Expanded(
           child: Column(
@@ -495,7 +496,7 @@ class _BarsRow extends StatelessWidget {
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 2),
                       decoration: BoxDecoration(
-                        color: barColor,
+                        color: color,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -503,18 +504,18 @@ class _BarsRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              // Rótulo (somente para alguns índices) com leve rotação
+              // ✅ Rótulo em TODAS as barras
               SizedBox(
-                height: 18,
+                height: labelBoxHeight,
                 child: Center(
                   child: labelIdxs.contains(i)
                       ? Transform.rotate(
-                          angle: -0.45, // ~-26°
+                          angle: labelAngle,
                           child: Text(
                             labels[i],
-                            style: TextStyle(fontSize: 9, color: textColor),
-                            overflow: TextOverflow.visible,
+                            style: TextStyle(fontSize: labelFont, color: textColor),
                             softWrap: false,
+                            overflow: TextOverflow.visible,
                           ),
                         )
                       : const SizedBox.shrink(),
