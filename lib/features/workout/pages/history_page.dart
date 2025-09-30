@@ -451,16 +451,28 @@ class _BarsRow extends StatelessWidget {
     final maxVal = values.reduce((a, b) => a > b ? a : b);
     final n = values.length;
 
-    // até 6 rótulos: início/meio/fim distribuídos
-    final desired = n <= 6 ? n : 6;
+    // --- rótulos: no máx. 4 datas distribuídas (início/meio/fim) ---
+    final maxLabels = n <= 4 ? n : 4;
     final Set<int> labelIdxs = {};
     if (n == 1) {
       labelIdxs.add(0);
     } else {
-      for (int i = 0; i < desired; i++) {
-        final idx = ((i * (n - 1)) / (desired - 1)).round();
+      for (int i = 0; i < maxLabels; i++) {
+        final idx = ((i * (n - 1)) / (maxLabels - 1)).round();
         labelIdxs.add(idx);
       }
+    }
+
+    // --- largura das barras dentro do slot: dá respiro lateral ---
+    double widthFactor;
+    if (n <= 6) {
+      widthFactor = 0.55;
+    } else if (n <= 12) {
+      widthFactor = 0.42;
+    } else if (n <= 20) {
+      widthFactor = 0.34;
+    } else {
+      widthFactor = 0.28;
     }
 
     return Row(
@@ -473,10 +485,12 @@ class _BarsRow extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              // Barra
               Expanded(
                 child: Align(
                   alignment: Alignment.bottomCenter,
                   child: FractionallySizedBox(
+                    widthFactor: widthFactor,
                     heightFactor: hFactor,
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -489,15 +503,18 @@ class _BarsRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
+              // Rótulo (somente para alguns índices) com leve rotação
               SizedBox(
-                height: 14,
+                height: 18,
                 child: Center(
                   child: labelIdxs.contains(i)
-                      ? FittedBox(
-                          fit: BoxFit.scaleDown,
+                      ? Transform.rotate(
+                          angle: -0.45, // ~-26°
                           child: Text(
                             labels[i],
-                            style: TextStyle(fontSize: 10, color: textColor),
+                            style: TextStyle(fontSize: 9, color: textColor),
+                            overflow: TextOverflow.visible,
+                            softWrap: false,
                           ),
                         )
                       : const SizedBox.shrink(),
