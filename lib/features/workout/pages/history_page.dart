@@ -451,7 +451,6 @@ class _BarsRow extends StatelessWidget {
     final maxVal = values.reduce((a, b) => a > b ? a : b);
     final n = values.length;
 
-    // ✅ mostrar rótulo em TODAS as barras
     final Set<int> labelIdxs = {for (int i = 0; i < n; i++) i};
 
     // largura da barra (respiro lateral)
@@ -504,7 +503,6 @@ class _BarsRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              // ✅ Rótulo em TODAS as barras
               SizedBox(
                 height: labelBoxHeight,
                 child: Center(
