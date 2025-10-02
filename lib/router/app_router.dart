@@ -8,6 +8,8 @@ import '../features/exercise/pages/catalog_page.dart';
 import '../features/settings/pages/settings_page.dart';
 import '../features/workout/pages/workout_detail_page.dart';
 import '../features/workout/pages/workout_editor_page.dart';
+import '../features/workout/pages/history_workout_detail_page.dart';
+
 
 /// Rotas nomeadas
 abstract class AppRoutes {
@@ -38,6 +40,17 @@ final router = GoRouter(
           name: 'history',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: HistoryPage()),
+          routes: [
+            // 👇 detalhe como child de /history
+            GoRoute(
+              name: 'history_workout_detail',
+              path: 'workout/:id', // URL final: /history/workout/<id>
+              builder: (context, state) {
+                final id = state.pathParameters['id']!;
+                return HistoryWorkoutDetailPage(workoutId: id);
+              },
+            ),
+          ],
         ),
         GoRoute(
           path: AppRoutes.catalog,
@@ -54,7 +67,7 @@ final router = GoRouter(
       ],
     ),
 
-    // Detalhe do treino
+    // continua fora do Shell: edições/criações
     GoRoute(
       path: AppRoutes.workoutDetail,
       name: 'workout_detail',
@@ -63,8 +76,6 @@ final router = GoRouter(
         return WorkoutDetailPage(workoutId: id);
       },
     ),
-
-    // ✅ NOVO: criar treino (usado por context.pushNamed('workout_new'))
     GoRoute(
       path: AppRoutes.workoutNew,
       name: 'workout_new',
