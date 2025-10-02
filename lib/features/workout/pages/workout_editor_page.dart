@@ -12,7 +12,6 @@ class WorkoutEditorPage extends ConsumerStatefulWidget {
 }
 
 class _WorkoutEditorPageState extends ConsumerState<WorkoutEditorPage> {
-  String? _workoutId;
   final _titleCtrl = TextEditingController();
   Exercise? _selectedExercise;
   final List<Exercise> _selectedList = [];
@@ -28,7 +27,7 @@ class _WorkoutEditorPageState extends ConsumerState<WorkoutEditorPage> {
     final repo = ref.watch(workoutRepoProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Novo treino')),
+      appBar: AppBar(title: const Text('Nova rotina')),
       body: FutureBuilder<List<Exercise>>(
         future: repo.allExercises(),
         builder: (context, snapshot) {
@@ -40,29 +39,33 @@ class _WorkoutEditorPageState extends ConsumerState<WorkoutEditorPage> {
                 TextField(
                   controller: _titleCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Título do treino (opcional)',
+                    labelText: 'Título da rotina',
                   ),
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Exercise>(
                   value: _selectedExercise,
                   decoration: const InputDecoration(labelText: 'Adicionar exercício'),
-                  items: all.map((e) => DropdownMenuItem(
-                    value: e,
-                    child: Text(e.name),
-                  )).toList(),
+                  items: all
+                      .map((e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(e.name),
+                          ))
+                      .toList(),
                   onChanged: (v) => setState(() => _selectedExercise = v),
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     ElevatedButton.icon(
-                      onPressed: _selectedExercise == null ? null : () {
-                        setState(() {
-                          _selectedList.add(_selectedExercise!);
-                          _selectedExercise = null;
-                        });
-                      },
+                      onPressed: _selectedExercise == null
+                          ? null
+                          : () {
+                              setState(() {
+                                _selectedList.add(_selectedExercise!);
+                                _selectedExercise = null;
+                              });
+                            },
                       icon: const Icon(Icons.add),
                       label: const Text('Adicionar'),
                     ),
@@ -73,38 +76,41 @@ class _WorkoutEditorPageState extends ConsumerState<WorkoutEditorPage> {
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
-                  children: _selectedList.map((e) => Chip(
-                    label: Text(e.name),
-                    onDeleted: () {
-                      setState(() => _selectedList.remove(e));
-                    },
-                  )).toList(),
+                  children: _selectedList
+                      .map(
+                        (e) => Chip(
+                          label: Text(e.name),
+                          onDeleted: () {
+                            setState(() => _selectedList.remove(e));
+                          },
+                        ),
+                      )
+                      .toList(),
                 ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Iniciar treino'),
-                  onPressed: _selectedList.isEmpty ? null : () async {
-                    // cria workout
-                    final id = await repo.createWorkout(title: _titleCtrl.text.isEmpty ? null : _titleCtrl.text);
-                    setState(() => _workoutId = id);
+                  icon: const Icon(Icons.save),
+                  label: const Text('Salvar rotina'),
+                  onPressed: _selectedList.isEmpty
+                      ? null
+                      : () async {
+                          // salva rotina como template
+                          await repo.saveTemplateFromExercises(
+                            name: _titleCtrl.text.trim().isEmpty
+                                ? 'Rotina sem nome'
+                                : _titleCtrl.text.trim(),
+                            exerciseIdsInOrder:
+                                _selectedList.map((e) => e.id).toList(),
+                          );
 
-                    // adiciona exercícios na ordem
-                    for (var i = 0; i < _selectedList.length; i++) {
-                      await repo.addExerciseToWorkout(
-                        workoutId: id,
-                        exerciseId: _selectedList[i].id,
-                        ord: i,
-                      );
-                    }
-
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Treino iniciado! Volte à Home para ver.')),
-                      );
-                      context.pop();
-                    }
-                  },
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Rotina salva com sucesso')),
+                            );
+                            context.goNamed('today'); // volta para Hoje sem treino ativo
+                          }
+                        },
                 ),
               ],
             ),
