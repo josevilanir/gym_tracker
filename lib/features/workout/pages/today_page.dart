@@ -71,7 +71,7 @@ class _TodayContent extends ConsumerWidget {
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // HEADER de métricas mesmo sem treino ativo
+                  // Header de métricas mesmo sem treino ativo
                   _MetricsHeader(
                     workoutsMonth: workoutsMonth,
                     streak: streak,
@@ -80,7 +80,7 @@ class _TodayContent extends ConsumerWidget {
                   const SizedBox(height: 32),
                   const Center(child: Text('Sem treinos ativos.')),
                   const SizedBox(height: 8),
-                  const Center(child: Text('Crie um novo ou use uma rotina salva.')),
+                  const Center(child: Text('Crie um treino vazio ou use uma rotina salva.')),
                   const SizedBox(height: 16),
                   const Center(child: _StartFab(inline: true)),
                 ],
@@ -229,6 +229,7 @@ class _StartFab extends ConsumerWidget {
 
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => Padding(
@@ -241,48 +242,63 @@ class _StartFab extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Iniciar a partir de rotinas', style: Theme.of(context).textTheme.titleLarge),
+                Text('Iniciar treino', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
-                // ✅ Criar NOVA ROTINA (começa vazia)
-                FilledButton.icon(
-                  icon: const Icon(Icons.auto_awesome_motion_outlined),
-                  label: const Text('Criar nova rotina'),
-                  onPressed: () async {
+
+                // 1) Treino vazio / personalizado
+                ListTile(
+                  leading: const Icon(Icons.playlist_add),
+                  title: const Text('Treino vazio / personalizado'),
+                  subtitle: const Text('Começar agora, sem rotina'),
+                  onTap: () async {
+                    final id = await repo.createEmptyWorkoutNow(); // done:false (ativo)
+                    if (!context.mounted) return;
                     Navigator.pop(context);
-                    // cria um treino vazio para você EDITAR e depois salvar como rotina
-                    final id = await repo.createWorkout(); // sem exercícios
-                    if (context.mounted) {
-                      // Dica: ao abrir o detalhe, o usuário pode tocar no ícone de "Salvar como rotina"
-                      context.pushNamed('workout_detail', pathParameters: {'id': id});
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Dica: toque em “Salvar como rotina” no topo.'),
-                        ),
-                      );
-                    }
+                    context.pushNamed('workout_detail', pathParameters: {'id': id});
                   },
                 ),
-                const SizedBox(height: 16),
-                Text('Ou use uma rotina existente', style: Theme.of(context).textTheme.titleMedium),
+
+                const Divider(height: 16),
+
+                // 2) Iniciar a partir de rotina existente
+                Text('Usar rotina salva', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 if (templates.isEmpty)
-                  const Text('Nenhuma rotina salva ainda.')
+                  const ListTile(
+                    leading: Icon(Icons.bookmark_add_outlined),
+                    title: Text('Nenhuma rotina salva'),
+                    subtitle: Text('Crie uma rotina para usá-la aqui'),
+                  )
                 else
-                  ...templates.map((t) => ListTile(
-                        leading: const Icon(Icons.bookmark_added_outlined),
-                        title: Text(t.name),
-                        subtitle: const Text('Toque para começar agora'),
-                        onTap: () async {
-                          final newId = await repo.createWorkoutFromTemplate(
-                            templateId: t.id,
-                            title: t.name,
-                          );
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                            context.pushNamed('workout_detail', pathParameters: {'id': newId});
-                          }
-                        },
-                      )),
+                  ...templates.map(
+                    (t) => ListTile(
+                      leading: const Icon(Icons.bookmark_outlined),
+                      title: Text(t.name),
+                      subtitle: const Text('Começar agora a partir desta rotina'),
+                      onTap: () async {
+                        final newId = await repo.createWorkoutFromTemplateAt(
+                          templateId: t.id,
+                          date: DateTime.now(),
+                          title: t.name,
+                          done: false, // ativo
+                        );
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                        context.pushNamed('workout_detail', pathParameters: {'id': newId});
+                      },
+                    ),
+                  ),
+
+                const SizedBox(height: 8),
+                // 3) Atalho para criar/editar rotinas (não cria treino!)
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    context.pushNamed('workout_new'); // abre o editor de rotina
+                  },
+                  icon: const Icon(Icons.auto_awesome_motion_outlined),
+                  label: const Text('Criar/editar rotinas'),
+                ),
               ],
             );
           },
