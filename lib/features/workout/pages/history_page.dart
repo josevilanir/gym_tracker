@@ -182,21 +182,20 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
                                 return Card(
                                   child: ListTile(
-                                    leading: const Icon(Icons.check_circle,
-                                        color: Colors.green),
+                                    leading: const Icon(Icons.check_circle, color: Colors.green),
                                     title: Text(title),
                                     subtitle: Text('Concluído em $dateStr'),
                                     trailing: Wrap(
                                       spacing: 8,
                                       crossAxisAlignment: WrapCrossAlignment.center,
                                       children: [
-                                        _ChipStat(
-                                            icon: Icons.fitness_center,
-                                            label: '$exCount'),
-                                        _ChipStat(
-                                            icon: Icons.format_list_numbered,
-                                            label: '$setCount'),
+                                        _ChipStat(icon: Icons.fitness_center, label: '$exCount'),
+                                        _ChipStat(icon: Icons.format_list_numbered, label: '$setCount'),
                                       ],
+                                    ),
+                                    onTap: () => context.pushNamed(
+                                      'history_workout_detail',
+                                      pathParameters: {'id': w.id}, // <- id do treino da lista
                                     ),
                                   ),
                                 );
@@ -300,8 +299,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                       done: true, // registro retroativo normalmente já concluído
                                     );
                                     if (context.mounted) {
-                                      Navigator.pop(context);
-                                      context.pushNamed('workout_detail', pathParameters: {'id': wid});
+                                      Navigator.pop(context); // fecha o bottom sheet
+                                      context.pushNamed(
+                                        'history_workout_detail',
+                                        pathParameters: {'id': wid},
+                                      );
                                     }
                                   },
                                 ),
@@ -320,7 +322,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                             );
                             if (context.mounted) {
                               Navigator.pop(context);
-                              context.pushNamed('workout_detail', pathParameters: {'id': wid});
+                              context.pushNamed('history_workout_detail', pathParameters: {'id': wid});
                             }
                           },
                         ),
