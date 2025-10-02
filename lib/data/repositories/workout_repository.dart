@@ -121,6 +121,14 @@ Future<void> ensureSeed() async {
     return id;
   }
 
+  Future<String> createEmptyWorkoutNow({String? title}) async {
+  return createWorkoutAt(
+    date: DateTime.now(),
+    title: (title?.trim().isEmpty ?? true) ? null : title!.trim(),
+    done: false, // ativo
+  );
+}
+
   // --- remoções ---
   Future<void> deleteSet(String setId) => db.deleteSet(setId);
   Future<void> deleteWorkoutExercise(String workoutExerciseId) =>
@@ -371,4 +379,50 @@ Future<void> ensureSeed() async {
 
     return wid;
   }
+
+// ================== TEMPLATES (ROTINAS) – CRIAÇÃO/EDIÇÃO SEM INICIAR TREINO ==================
+
+/// Cria uma rotina (template) vazia e retorna o id.
+/// Usa AppDatabase.createTemplate(id: ..., name: ...)
+  Future<String> createTemplate({required String name}) async {
+    final id = _uuid.v4();
+    await db.createTemplate(id: id, name: name);
+    return id;
+  }
+
+/// Substitui os exercícios da rotina pela lista informada (na ordem).
+/// OBS: no seu AppDatabase não existe deleteTemplateExercises(),
+/// então apagamos direto via delete(templateExercises).where(...)
+  Future<void> setTemplateExercises({
+    required String templateId,
+    required List<String> exerciseIdsInOrder,
+  }) async {
+  // apaga os exercícios atuais da rotina
+    await (db.delete(db.templateExercises)
+          ..where((te) => te.templateId.equals(templateId)))
+        .go();
+
+  // reinsere respeitando a ordem
+    for (var i = 0; i < exerciseIdsInOrder.length; i++) {
+      await db.addTemplateExercise(
+        id: _uuid.v4(),
+        templateId: templateId,
+        exerciseId: exerciseIdsInOrder[i],
+        ord: i,
+      );
+    }
+  }
+
+/// Atalho: cria a rotina já com os exercícios informados (sem iniciar treino).
+  Future<String> saveTemplateFromExercises({
+    required String name,
+    required List<String> exerciseIdsInOrder,
+  }) async {
+    final tid = await createTemplate(name: name);
+    await setTemplateExercises(
+      templateId: tid,
+      exerciseIdsInOrder: exerciseIdsInOrder,
+    );
+    return tid;
+  } 
 }
