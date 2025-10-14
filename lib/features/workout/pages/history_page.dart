@@ -290,16 +290,19 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                 trailing: TextButton(
                                   child: const Text('Usar'),
                                   onPressed: () async {
+                                  // cria o treino retroativo a partir da rotina, mas como rascunho (não concluído)
                                     final wid = await repo.createWorkoutFromTemplateAt(
                                       templateId: t.id,
-                                      date: selected,
+                                      date: selected, // data escolhida no calendário
                                       title: titleCtrl.text.trim().isEmpty ? t.name : titleCtrl.text.trim(),
-                                      done: true, // registro retroativo normalmente já concluído
+                                      done: false, // <- importante: cria como rascunho, para poder editar
                                     );
+
                                     if (context.mounted) {
                                       Navigator.pop(context); // fecha o bottom sheet
+                                      // leva o usuário direto para a tela de edição (detalhe do treino)
                                       context.pushNamed(
-                                        'history_workout_detail',
+                                        'workout_detail',
                                         pathParameters: {'id': wid},
                                       );
                                     }
@@ -311,16 +314,21 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
                         FilledButton.icon(
                           icon: const Icon(Icons.playlist_add),
-                          label: const Text('Registrar treino vazio nessa data'),
+                          label: const Text('Registrar treino nessa data'),
                           onPressed: () async {
+                            // cria um treino vazio NA data, como rascunho
                             final wid = await repo.createWorkoutAt(
-                              date: selected,
+                              date: selected,                                // a DateTime escolhida
                               title: titleCtrl.text.trim().isEmpty ? null : titleCtrl.text.trim(),
-                              done: true,
+                              done: false,                                   // <- importante: rascunho
                             );
+
                             if (context.mounted) {
-                              Navigator.pop(context);
-                              context.pushNamed('history_workout_detail', pathParameters: {'id': wid});
+                              Navigator.pop(context); // fecha o bottom sheet
+                              context.pushNamed(
+                                'workout_detail',
+                                pathParameters: {'id': wid},
+                              );
                             }
                           },
                         ),

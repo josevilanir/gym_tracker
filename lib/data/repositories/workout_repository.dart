@@ -4,6 +4,35 @@ import '../../core/enums.dart';
 import '../db/app_database.dart';
 import 'package:drift/drift.dart' show Value, InsertMode;
 
+  // ===================================================================
+// TIPOS AUXILIARES p/ criação retroativa com conteúdo
+// ===================================================================
+class SetInput {
+  final int reps;
+  final double weight;
+  final double? rpe;
+  final int? restSec;
+  final String? note;
+
+  const SetInput({
+    required this.reps,
+    required this.weight,
+    this.rpe,
+    this.restSec,
+    this.note,
+  });
+}
+
+class WorkoutContentItem {
+  final String exerciseId;
+  final List<SetInput> sets;
+
+  const WorkoutContentItem({
+    required this.exerciseId,
+    required this.sets,
+  });
+}
+
 class WorkoutRepository {
   final AppDatabase db;
   final _uuid = const Uuid();
@@ -418,11 +447,11 @@ Future<void> ensureSeed() async {
     required String name,
     required List<String> exerciseIdsInOrder,
   }) async {
-    final tid = await createTemplate(name: name);
-    await setTemplateExercises(
-      templateId: tid,
-      exerciseIdsInOrder: exerciseIdsInOrder,
-    );
-    return tid;
-  } 
+      final tid = await createTemplate(name: name);
+      await setTemplateExercises(
+        templateId: tid,
+        exerciseIdsInOrder: exerciseIdsInOrder,
+      );
+      return tid;
+    }
 }
