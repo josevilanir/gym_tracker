@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app.dart';
 import '../../workout/controllers/providers.dart';
-import '../../../data/db/app_database.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
