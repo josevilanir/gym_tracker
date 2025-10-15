@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
-/// Estado do timer
 @immutable
 class RestTimerState {
   final bool running;
-  final int total;      // em segundos
-  final int remaining;  // em segundos
+  final int total;      // segundos
+  final int remaining;  // segundos
 
   const RestTimerState({
     required this.running,
@@ -27,7 +27,6 @@ class RestTimerState {
       total == 0 ? 0 : (total - remaining).clamp(0, total) / total;
 }
 
-/// Controller do timer (1s)
 class RestTimerController extends StateNotifier<RestTimerState> {
   RestTimerController() : super(const RestTimerState.idle());
 
@@ -46,6 +45,7 @@ class RestTimerController extends StateNotifier<RestTimerState> {
       if (left <= 0) {
         t.cancel();
         state = const RestTimerState.idle();
+        _notifyEnd();
       } else {
         state = RestTimerState(running: true, total: state.total, remaining: left);
       }
@@ -69,6 +69,20 @@ class RestTimerController extends StateNotifier<RestTimerState> {
     state = const RestTimerState.idle();
   }
 
+  Future<void> _notifyEnd() async {
+  try {
+    final player = FlutterRingtonePlayer();
+    await player.playNotification(
+      // opcionais:
+      asAlarm: false,
+      looping: false,
+      // volume: 0.9, // se quiser
+    );
+  } catch (_) {
+    // ignora falhas ao tentar tocar o som
+  }
+}
+
   @override
   void dispose() {
     _ticker?.cancel();
@@ -76,7 +90,6 @@ class RestTimerController extends StateNotifier<RestTimerState> {
   }
 }
 
-/// Provider global
 final restTimerProvider =
     StateNotifierProvider<RestTimerController, RestTimerState>(
   (ref) => RestTimerController(),
