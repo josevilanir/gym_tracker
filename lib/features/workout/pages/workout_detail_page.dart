@@ -418,23 +418,24 @@ class RestTimerBar extends ConsumerWidget {
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: Row(
-            children: [
-              const Text('Descanso rápido:'),
-              const SizedBox(width: 8),
-              for (final sec in const [45, 60, 90])
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: OutlinedButton(
-                    onPressed: () => ctrl.start(sec),
-                    child: Text('${sec}s'),
+          child: 
+            Row(
+              children: [
+                const Text('Descanso rápido:'),
+                const SizedBox(width: 8),
+                for (final sec in const [45, 60, 90])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: OutlinedButton(
+                      onPressed: () => ctrl.start(sec),
+                      child: Text('${sec}s'),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
-    }
+        );
+      }
 
     return SafeArea(
       child: Container(
@@ -447,42 +448,58 @@ class RestTimerBar extends ConsumerWidget {
           border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
-          children: [
-            SizedBox(
-              width: 54,
-              child: Text(
-                st.label,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: LinearProgressIndicator(value: st.progress),
-            ),
-            const SizedBox(width: 12),
-            if (st.running)
-              IconButton(
-                tooltip: 'Pausar',
-                onPressed: ctrl.pause,
-                icon: const Icon(Icons.pause_circle_filled),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+              // Tempo (ex: 00:45)
+                  SizedBox(
+                    width: 60,
+                    child: Text(
+                      st.label, // ← usa o label do estado atual do timer
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+
+                // Barra de progresso
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: LinearProgressIndicator(
+                      value: st.progress,
+                      minHeight: 4,
+                    ),
+                  ),
+                ),
+
+              // Botões de controle
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (st.running)
+                      IconButton(
+                        icon: const Icon(Icons.pause),
+                        onPressed: ctrl.pause,
+                      )
+                    else if (st.remaining > 0)
+                      IconButton(
+                      icon: const Icon(Icons.play_arrow),
+                      onPressed: ctrl.resume,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.stop),
+                        onPressed: ctrl.stop,
+                      ),
+                    ],
+                  ),
+                ],
               )
-            else
-              IconButton(
-                tooltip: 'Retomar',
-                onPressed: ctrl.resume,
-                icon: const Icon(Icons.play_circle_fill),
-              ),
-            IconButton(
-              tooltip: 'Parar',
-              onPressed: ctrl.stop,
-              icon: const Icon(Icons.stop_circle_outlined),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+          );
+        }
+      }
 
 class _ExerciseTile extends ConsumerStatefulWidget {
   final WorkoutExercise we;
@@ -636,49 +653,45 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: TextField(
+                                child: TextField(
                                 controller: _weightCtrl,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 decoration: const InputDecoration(labelText: 'Peso (kg)'),
-                              ),
+                                ),
                             ),
                             const SizedBox(width: 12),
+                      // Botão Adicionar (SEM iniciar o timer automaticamente)
                             FilledButton.icon(
-                              icon: const Icon(Icons.add),
-                              label: const Text('Adicionar'),
-                              onPressed: () async {
-                                final reps = int.tryParse(_repsCtrl.text.trim());
-                                final weight = double.tryParse(
-                                  _weightCtrl.text.trim().replaceAll(',', '.'),
-                                );
-
-                                if (reps == null || weight == null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Informe reps e peso válidos.')),
-                                  );
-                                  return;
-                                }
-
-                              // adiciona a série normalmente
-                              await repo.addSetQuick(
-                                workoutExerciseId: widget.we.id,
-                                reps: reps,
-                                weight: weight,
+                                icon: const Icon(Icons.add),
+                                label: const Text(''),
+                                onPressed: () async {
+                              final reps = int.tryParse(_repsCtrl.text.trim());
+                              final weight = double.tryParse(
+                                _weightCtrl.text.trim().replaceAll(',', '.'),
                               );
 
-                              if (!mounted) return;
+                              if (reps == null || weight == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Informe reps e peso válidos.')),
+                              );
+                            return;
+                            }
 
-                            // limpa os campos
-                                _repsCtrl.clear();
-                                _weightCtrl.clear();
+                            await repo.addSetQuick(
+                              workoutExerciseId: widget.we.id,
+                              reps: reps,
+                              weight: weight,
+                            );
 
-                            // ✅ inicia o timer de descanso (exemplo: 60s)
-                                ref.read(restTimerProvider.notifier).start(60);
+                            if (!mounted) return;
 
-                            // recarrega a lista de séries
-                                await widget.onChanged();
-                              },
+                            _repsCtrl.clear();
+                            _weightCtrl.clear();
+
+                            await widget.onChanged();
+                            },
                             ),
+                              const SizedBox(width: 8),
                           ],
                         ),
                       ],
