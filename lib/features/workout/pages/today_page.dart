@@ -80,7 +80,9 @@ class _TodayContent extends ConsumerWidget {
                   const SizedBox(height: 32),
                   const Center(child: Text('Sem treinos ativos.')),
                   const SizedBox(height: 8),
-                  const Center(child: Text('Crie um treino vazio ou use uma rotina salva.')),
+                  const Center(
+                    child: Text('Crie um treino vazio ou use uma rotina salva.'),
+                  ),
                   const SizedBox(height: 16),
                   const Center(child: _StartFab(inline: true)),
                 ],
@@ -197,11 +199,19 @@ class _MetricItem extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: onColor)),
+        Text(
+          value,
+          style: Theme.of(context)
+              .textTheme
+              .headlineSmall
+              ?.copyWith(color: onColor),
+        ),
         const SizedBox(height: 4),
-        Text(label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onColor)),
+        Text(
+          label,
+          style:
+              Theme.of(context).textTheme.bodySmall?.copyWith(color: onColor),
+        ),
       ],
     );
   }
@@ -220,6 +230,35 @@ class _StartFab extends ConsumerWidget {
         onPressed: () => _showStartDialog(context, ref),
         icon: const Icon(Icons.playlist_add),
         label: const Text('Começar'),
+      ),
+    );
+  }
+
+  Future<String?> _askWorkoutTitle(BuildContext context) async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Título do treino'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            labelText: 'Título (opcional)',
+            hintText: 'Ex: Treino de pernas leve',
+          ),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => Navigator.pop(context, ctrl.text.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text('Salvar'),
+          ),
+        ],
       ),
     );
   }
@@ -245,15 +284,21 @@ class _StartFab extends ConsumerWidget {
                 Text('Iniciar treino', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
 
-                // 1) Treino vazio / personalizado
+                // 1) Treino vazio / personalizado (agora pede título)
                 ListTile(
                   leading: const Icon(Icons.playlist_add),
                   title: const Text('Treino vazio / personalizado'),
                   subtitle: const Text('Começar agora, sem rotina'),
                   onTap: () async {
-                    final id = await repo.createEmptyWorkoutNow(); // done:false (ativo)
+                    final title = await _askWorkoutTitle(context);
+                    if (title == null) return; // cancelou
+
+                    final id = await repo.createEmptyWorkoutNow(
+                      title: title.trim().isEmpty ? null : title.trim(),
+                    );
+
                     if (!context.mounted) return;
-                    Navigator.pop(context);
+                    Navigator.pop(context); // fecha o bottom sheet
                     context.pushNamed('workout_detail', pathParameters: {'id': id});
                   },
                 ),
