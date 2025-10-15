@@ -335,7 +335,6 @@ class _HowToSheet extends StatelessWidget {
 /// Gera instruções básicas a partir do nome, grupo e equipamento
 List<String> _buildHowTo(Exercise e) {
   final name = e.name.toLowerCase();
-  final eq = (e.equipment ?? '').toLowerCase();
   final group = e.muscleGroup;
 
   // Regras simples por palavras-chave

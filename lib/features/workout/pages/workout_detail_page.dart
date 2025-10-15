@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-
+import '../controllers/rest_timer_controller.dart';
 import '../../../core/enums.dart'; // MuscleGroup
 import '../../../data/db/app_database.dart';
 import '../../workout/controllers/providers.dart';
@@ -63,18 +63,18 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
                   ),
                 );
 
-        if (name != null && name.isNotEmpty) {
-          await repo.saveWorkoutAsTemplate(
-            workoutId: widget.workoutId,
-            name: name,
-          );
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Rotina salva!')),
-          );
-        }
-      },
-    ),
+            if (name != null && name.isNotEmpty) {
+              await repo.saveWorkoutAsTemplate(
+                workoutId: widget.workoutId,
+                name: name,
+              );
+            if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Rotina salva!')),
+              );
+            }
+          },
+        ),
 
     // Botão: concluir treino
     IconButton(
@@ -86,7 +86,7 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Treino concluído!')),
         );
-        Navigator.pop(context); // ✅ volta pra tela anterior
+        Navigator.pop(context); 
       },
     ),
   ],
@@ -97,6 +97,7 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
             label: const Text('Adicionar exercício'),
             onPressed: () => _bodyKey.currentState?.openAddExerciseDialog(),
           ),
+          bottomNavigationBar: const RestTimerBar(),
         );
       },
     );
@@ -400,6 +401,89 @@ Widget build(BuildContext context) {
   }
 }
 
+/// Barra fixa com controles do Timer de descanso
+class RestTimerBar extends ConsumerWidget {
+  const RestTimerBar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final st = ref.watch(restTimerProvider);
+    final ctrl = ref.read(restTimerProvider.notifier);
+
+    // Mostrar a barra apenas quando houver algo a exibir (rodando ou pausado)
+    final visible = st.running || st.remaining > 0;
+
+    if (!visible) {
+      // Dica rápida para iniciar: atalhos 45/60/90
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Row(
+            children: [
+              const Text('Descanso rápido:'),
+              const SizedBox(width: 8),
+              for (final sec in const [45, 60, 90])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: OutlinedButton(
+                    onPressed: () => ctrl.start(sec),
+                    child: Text('${sec}s'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black12)],
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 54,
+              child: Text(
+                st.label,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: LinearProgressIndicator(value: st.progress),
+            ),
+            const SizedBox(width: 12),
+            if (st.running)
+              IconButton(
+                tooltip: 'Pausar',
+                onPressed: ctrl.pause,
+                icon: const Icon(Icons.pause_circle_filled),
+              )
+            else
+              IconButton(
+                tooltip: 'Retomar',
+                onPressed: ctrl.resume,
+                icon: const Icon(Icons.play_circle_fill),
+              ),
+            IconButton(
+              tooltip: 'Parar',
+              onPressed: ctrl.stop,
+              icon: const Icon(Icons.stop_circle_outlined),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ExerciseTile extends ConsumerStatefulWidget {
   final WorkoutExercise we;
   final Future<void> Function() onChanged;
@@ -567,22 +651,31 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                 final weight = double.tryParse(
                                   _weightCtrl.text.trim().replaceAll(',', '.'),
                                 );
+
                                 if (reps == null || weight == null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Informe reps e peso válidos.'),
-                                    ),
+                                  const SnackBar(content: Text('Informe reps e peso válidos.')),
                                   );
                                   return;
                                 }
-                                await repo.addSetQuick(
-                                  workoutExerciseId: widget.we.id,
-                                  reps: reps,
-                                  weight: weight,
-                                );
-                                if (!mounted) return;
+
+                              // adiciona a série normalmente
+                              await repo.addSetQuick(
+                                workoutExerciseId: widget.we.id,
+                                reps: reps,
+                                weight: weight,
+                              );
+
+                              if (!mounted) return;
+
+                            // limpa os campos
                                 _repsCtrl.clear();
                                 _weightCtrl.clear();
+
+                            // ✅ inicia o timer de descanso (exemplo: 60s)
+                                ref.read(restTimerProvider.notifier).start(60);
+
+                            // recarrega a lista de séries
                                 await widget.onChanged();
                               },
                             ),
