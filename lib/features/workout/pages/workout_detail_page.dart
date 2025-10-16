@@ -147,7 +147,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
     final searchCtrl = TextEditingController();
     Exercise? selected;
 
-    Future<void> _refreshAll() async {
+    Future<void> refreshAll() async {
       all = await repo.allExercises();
     }
 
@@ -220,7 +220,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
               );
 
               if (createdId != null) {
-                await _refreshAll();
+                await refreshAll();
                 applyFilter();
                 selected = all.firstWhere(
                   (e) => e.id == createdId,
