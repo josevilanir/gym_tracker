@@ -476,7 +476,7 @@ class _BarsRow extends StatelessWidget {
     const double minHeightFactor = 0.02;
 
     // ajustes de rótulo para caber (ângulo e fonte menor)
-    final double labelAngle = -0.6; // ~ -34°
+    const double labelAngle = -0.6; // ~ -34°
     final double labelFont = (n > 12) ? 8 : 9;
     final double labelBoxHeight = (n > 12) ? 22 : 18;
 
