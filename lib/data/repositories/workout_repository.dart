@@ -3,6 +3,107 @@ import 'package:uuid/uuid.dart';
 import '../../core/enums.dart';
 import '../db/app_database.dart';
 import 'package:drift/drift.dart' show Value, InsertMode;
+import 'dart:math' as Math;
+import 'package:drift/drift.dart';
+
+/// Fórmulas suportadas para cálculo de 1RM (top-level, fora da classe)
+enum OneRmFormula { epley, brzycki, wathan }
+
+/// Estima o 1RM a partir de [reps] e [weight] usando a [formula].
+double estimateOneRm({
+  required int reps,
+  required double weight,
+  OneRmFormula formula = OneRmFormula.epley,
+}) {
+  if (reps <= 1) return weight; // 1 repetição já é o 1RM
+
+  switch (formula) {
+    case OneRmFormula.epley:
+      // Fórmula de Epley: 1RM = w * (1 + reps / 30)
+      return weight * (1 + reps / 30.0);
+
+    case OneRmFormula.brzycki:
+      // Fórmula de Brzycki: 1RM = w * 36 / (37 - reps)
+      final denom = (37.0 - reps);
+      if (denom <= 0) return weight;
+      return weight * 36.0 / denom;
+
+    case OneRmFormula.wathan:
+      // Fórmula de Wathan: 1RM = w * (100 / (48.8 + 53.8 * e^(-0.075 * reps)))
+      final expPart = Math.exp(-0.075 * reps);
+      return weight * (100.0 / (48.8 + 53.8 * expPart));
+  }
+}
+
+/// Retorna o melhor 1RM **no treino** para um exercício específico.
+Future<double?> bestOneRmInWorkoutForExercise({
+  required AppDatabase db,
+  required String workoutId,
+  required String exerciseId,
+  OneRmFormula formula = OneRmFormula.epley,
+}) async {
+  final wes = await (db.select(db.workoutExercises)
+        ..where((we) => we.workoutId.equals(workoutId) & we.exerciseId.equals(exerciseId)))
+      .get();
+  if (wes.isEmpty) return null;
+
+  double? best;
+  for (final we in wes) {
+    final sets = await db.listSets(we.id);
+    for (final s in sets) {
+      final w = s.weight ?? 0;
+      if (w <= 0) continue; // ignora séries sem peso
+      final oneRm = estimateOneRm(reps: s.reps, weight: w, formula: formula);
+      if (best == null || oneRm > best!) best = oneRm;
+    }
+  }
+  return best;
+}
+
+/// Retorna o melhor 1RM **em todo o histórico** para um exercício específico.
+Future<double?> bestOneRmAllTimeForExercise({
+  required AppDatabase db,
+  required String exerciseId,
+  OneRmFormula formula = OneRmFormula.epley,
+}) async {
+  final wes = await (db.select(db.workoutExercises)
+        ..where((we) => we.exerciseId.equals(exerciseId)))
+      .get();
+  if (wes.isEmpty) return null;
+
+  double? best;
+  for (final we in wes) {
+    final sets = await db.listSets(we.id);
+    for (final s in sets) {
+      final w = s.weight ?? 0;
+      if (w <= 0) continue;
+      final oneRm = estimateOneRm(reps: s.reps, weight: w, formula: formula);
+      if (best == null || oneRm > best!) best = oneRm;
+    }
+  }
+  return best;
+}
+
+/// Retorna o melhor 1RM do treino e o PR histórico juntos (para exibir no UI).
+Future<({double? bestInWorkout, double? bestAllTime})> bestsForExercise({
+  required AppDatabase db,
+  required String workoutId,
+  required String exerciseId,
+  OneRmFormula formula = OneRmFormula.epley,
+}) async {
+  final bestIn = await bestOneRmInWorkoutForExercise(
+    db: db,
+    workoutId: workoutId,
+    exerciseId: exerciseId,
+    formula: formula,
+  );
+  final bestAll = await bestOneRmAllTimeForExercise(
+    db: db,
+    exerciseId: exerciseId,
+    formula: formula,
+  );
+  return (bestInWorkout: bestIn, bestAllTime: bestAll);
+}
 
   // ===================================================================
 // TIPOS AUXILIARES p/ criação retroativa com conteúdo
@@ -45,7 +146,7 @@ Future<void> ensureSeed() async {
   final existing = await db.getAllExercises();
   if (existing.isNotEmpty) return;
 
-  final _uuid = const Uuid();
+  const uuid = Uuid();
 
   // Tabela de seeds: ~5 por grupo muscular
   final Map<String, List<Map<String, String>>> seeds = {
@@ -108,7 +209,7 @@ Future<void> ensureSeed() async {
         b.insert(
           db.exercises,
           ExercisesCompanion.insert(
-            id: _uuid.v4(),
+            id: uuid.v4(),
             name: ex['name']!,
             muscleGroup: group,              // sua coluna espera string: MuscleGroup.xxx.name
             equipment: Value(ex['equipment']!),
@@ -454,4 +555,150 @@ Future<void> ensureSeed() async {
       );
       return tid;
     }
+
+    // ---------------- PRs & Progressos (Recordes) ----------------
+
+double _e1rmEpley(int reps, double weight) {
+  // Fórmula Epley: e1RM = peso * (1 + reps/30)
+  return weight * (1.0 + reps / 30.0);
+}
+
+/// Melhor e1RM histórico para um exercício (ou null se nunca houve sets).
+Future<double?> bestE1RMForExercise(String exerciseId) async {
+  // pega todos os workout_exercises do exercício
+  final wes = await (db.select(db.workoutExercises)
+        ..where((we) => we.exerciseId.equals(exerciseId)))
+      .get();
+
+  if (wes.isEmpty) return null;
+
+  double? best;
+  for (final we in wes) {
+    final sets = await db.listSets(we.id);
+    for (final s in sets) {
+      final e1 = _e1rmEpley(s.reps, s.weight ?? 0);
+      if (best == null || e1 > best) best = e1;
+    }
+  }
+  return best;
+}
+
+/// Retorna a melhor entrada (série) de e1RM desse exercício, com data e set.
+Future<({double e1rm, DateTime date, SetEntry set, String workoutId})?>
+    bestE1RMEntry(String exerciseId) async {
+  final wes = await (db.select(db.workoutExercises)
+        ..where((we) => we.exerciseId.equals(exerciseId)))
+      .get();
+
+  double? best;
+  SetEntry? bestSet;
+  String? bestWorkoutId;
+  DateTime? bestDate;
+
+  for (final we in wes) {
+    final sets = await db.listSets(we.id);
+    if (sets.isEmpty) continue;
+
+    // data do treino
+    final w = await db.getWorkoutById(we.workoutId);
+    if (w == null) continue;
+    final wDate = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+
+    for (final s in sets) {
+      final e1 = _e1rmEpley(s.reps, s.weight ?? 0);
+      if (best == null || e1 > best) {
+        best = e1;
+        bestSet = s;
+        bestWorkoutId = we.workoutId;
+        bestDate = wDate;
+      }
+    }
+  }
+
+  if (best == null || bestSet == null || bestDate == null || bestWorkoutId == null) {
+    return null;
+  }
+  return (e1rm: best, date: bestDate, set: bestSet, workoutId: bestWorkoutId);
+}
+
+/// Série temporal de VOLUME (soma reps*peso) por dia para um exercício.
+Future<List<({DateTime day, double volume})>> exerciseVolumeSeries({
+  required String exerciseId,
+  required DateTime start,
+  required DateTime end,
+}) async {
+  // normaliza datas
+  final startDay = DateTime(start.year, start.month, start.day);
+  final endDay = DateTime(end.year, end.month, end.day, 23, 59, 59);
+
+  // pega todos os workout_exercises do exercício
+  final wes = await (db.select(db.workoutExercises)
+        ..where((we) => we.exerciseId.equals(exerciseId)))
+      .get();
+  if (wes.isEmpty) {
+    // ainda assim retornamos todos os dias zerados
+    final days = <({DateTime day, double volume})>[];
+    for (DateTime d = startDay; !d.isAfter(endDay); d = d.add(const Duration(days: 1))) {
+      days.add((day: DateTime(d.year, d.month, d.day), volume: 0));
+    }
+    return days;
+  }
+
+  // agrega volume por DIA do treino
+  final Map<DateTime, double> perDay = {};
+  for (final we in wes) {
+    // data do treino dono desse WorkoutExercise
+    final w = await db.getWorkoutById(we.workoutId);
+    if (w == null) continue;
+    final wDate = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+    if (wDate.isBefore(startDay) || wDate.isAfter(endDay)) continue;
+    final dayKey = DateTime(wDate.year, wDate.month, wDate.day);
+
+    final sets = await db.listSets(we.id);
+    if (sets.isEmpty) continue;
+
+    double vol = 0;
+    for (final s in sets) {
+      final weight = s.weight ?? 0;
+      vol += (s.reps * weight);
+    }
+    perDay.update(dayKey, (old) => old + vol, ifAbsent: () => vol);
+  }
+
+  // devolve a série completa (dias faltantes = 0)
+  final out = <({DateTime day, double volume})>[];
+  for (DateTime d = startDay; !d.isAfter(endDay); d = d.add(const Duration(days: 1))) {
+    final key = DateTime(d.year, d.month, d.day);
+    out.add((day: key, volume: perDay[key] ?? 0));
+  }
+  return out;
+}
+
+/// Verifica se uma série (ainda não salva) seria PR.
+/// Use ANTES de chamar `addSetQuick(...)`.
+  Future<({bool isPr, double e1rm})> checkIfNewPR({
+    required String exerciseId,
+    required int reps,
+    required double weight,
+  }) async {
+      final currentBest = await bestE1RMForExercise(exerciseId) ?? 0.0;
+      final newE1 = _e1rmEpley(reps, weight);
+      return (isPr: newE1 > currentBest, e1rm: newE1);
+    }
+
+/// (Opcional) Indica se um treino contém algum PR para qualquer exercício.
+/// Útil para mostrar badge "PR" no histórico.
+  Future<bool> hasAnyPRInWorkout(String workoutId) async {
+  // para cada exercício do treino, descubra se alguma série bate o best global.
+    final wes = await db.listWorkoutExercises(workoutId);
+    for (final we in wes) {
+      final bestBeforeGlobal = await bestE1RMForExercise(we.exerciseId) ?? 0.0;
+      final sets = await db.listSets(we.id);
+      for (final s in sets) {
+        final e1 = _e1rmEpley(s.reps, s.weight ?? 0);
+        if (e1 >= bestBeforeGlobal && bestBeforeGlobal > 0) return true;
+      }
+    }
+    return false;
+  }
 }
