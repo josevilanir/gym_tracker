@@ -701,4 +701,42 @@ Future<List<({DateTime day, double volume})>> exerciseVolumeSeries({
     }
     return false;
   }
+
+  // ---------- Sets (extra) ----------
+Future<void> updateSetNote(String setId, String? note) =>
+    db.updateSetNote(setId: setId, note: note);
+
+// ---------- Métricas (extra) ----------
+/// Melhor e1RM do exercício ANTES de um determinado treino (p/ comparação).
+Future<double?> bestE1rmForExerciseBefore({
+  required String exerciseId,
+  required int beforeEpoch,
+}) async {
+  // Busca treinos concluídos antes de beforeEpoch
+  final prevWorkouts = await (db.select(db.workouts)
+        ..where((w) => w.done.equals(true) & w.dateEpoch.isSmallerThanValue(beforeEpoch)))
+      .get();
+
+  if (prevWorkouts.isEmpty) return null;
+
+  // Coleta todos WorkoutExercises desse exercício nesses treinos
+  final ids = prevWorkouts.map((w) => w.id).toList();
+  final wes = await (db.select(db.workoutExercises)
+        ..where((we) => we.exerciseId.equals(exerciseId) & we.workoutId.isIn(ids)))
+      .get();
+
+  if (wes.isEmpty) return null;
+
+  double? best;
+  for (final we in wes) {
+    final sets = await db.listSets(we.id);
+    for (final s in sets) {
+      // aproveita os helpers de e1RM já adicionados ao repositório (Epley)
+      final e = estimateOneRm(reps: s.reps, weight: s.weight);
+      if (best == null || e > best!) best = e;
+    }
+  }
+  return best;
+}
+
 }
