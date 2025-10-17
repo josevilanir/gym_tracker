@@ -1,8 +1,11 @@
+// lib/features/workout/pages/workout_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+
 import '../controllers/rest_timer_controller.dart';
-import '../../../core/enums.dart'; // MuscleGroup
+import '../../../core/enums.dart';
+import '../../../core/constants.dart';
 import '../../../data/db/app_database.dart';
 import '../../workout/controllers/providers.dart';
 
@@ -28,69 +31,75 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
         final title = w?.title ?? 'Treino';
         final date = w == null
             ? ''
-            : DateFormat('dd/MM/yyyy HH:mm')
+            : DateFormat(AppConstants.dateTimeFormatFull)
                 .format(DateTime.fromMillisecondsSinceEpoch(w.dateEpoch));
 
         return Scaffold(
           appBar: AppBar(
-          title: Text('$title ($date)'),
-          actions: [
-            // Botão: salvar treino como rotina
-            IconButton(
-              tooltip: 'Salvar como rotina',
-              icon: const Icon(Icons.bookmark_add_outlined),
-              onPressed: () async {
-                final nameCtrl = TextEditingController(text: title);
-                final name = await showDialog<String>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                  title: const Text('Salvar rotina'),
-                  content: TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Nome da rotina'),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancelar'),
+            title: Text('$title ($date)'),
+            actions: [
+              // Botão: salvar treino como rotina
+              IconButton(
+                tooltip: 'Salvar como rotina',
+                icon: const Icon(Icons.bookmark_add_outlined),
+                onPressed: () async {
+                  final nameCtrl = TextEditingController(text: title);
+                  final name = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Salvar rotina'),
+                      content: TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(labelText: 'Nome da rotina'),
+                        maxLength: AppConstants.maxWorkoutTitleLength,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancelar'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
+                          child: const Text('Salvar'),
+                        ),
+                      ],
                     ),
-                    FilledButton(
-                      onPressed: () =>
-                    Navigator.pop(ctx, nameCtrl.text.trim()),
-                    child: const Text('Salvar'),
+                  );
+
+                  if (name != null && name.isNotEmpty) {
+                    await repo.saveWorkoutAsTemplate(
+                      workoutId: widget.workoutId,
+                      name: name,
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(AppConstants.successTemplateCreated),
+                        duration: AppConstants.snackBarSuccessDuration,
+                      ),
+                    );
+                  }
+                },
+              ),
+
+              // Botão: concluir treino
+              IconButton(
+                tooltip: 'Concluir treino',
+                icon: const Icon(Icons.check),
+                onPressed: () async {
+                  await repo.markDone(widget.workoutId, true);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(AppConstants.successWorkoutCompleted),
+                      duration: AppConstants.snackBarSuccessDuration,
                     ),
-                    ],
-                  ),
-                );
-
-            if (name != null && name.isNotEmpty) {
-              await repo.saveWorkoutAsTemplate(
-                workoutId: widget.workoutId,
-                name: name,
-              );
-            if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Rotina salva!')),
-              );
-            }
-          },
-        ),
-
-    // Botão: concluir treino
-    IconButton(
-      tooltip: 'Concluir treino',
-      icon: const Icon(Icons.check),
-      onPressed: () async {
-        await repo.markDone(widget.workoutId, true);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Treino concluído!')),
-        );
-        Navigator.pop(context); 
-      },
-    ),
-  ],
-),
+                  );
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
           body: _DetailBody(key: _bodyKey, workoutId: widget.workoutId),
           floatingActionButton: FloatingActionButton.extended(
             icon: const Icon(Icons.add),
@@ -180,8 +189,9 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                       TextField(
                         controller: nameCtrl,
                         decoration: const InputDecoration(labelText: 'Nome'),
+                        maxLength: AppConstants.maxExerciseNameLength,
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: UIConstants.paddingS),
                       DropdownButtonFormField<MuscleGroup>(
                         value: muscle,
                         decoration: const InputDecoration(labelText: 'Grupo muscular'),
@@ -190,16 +200,20 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                             .toList(),
                         onChanged: (v) => muscle = v ?? MuscleGroup.chest,
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: UIConstants.paddingS),
                       TextField(
                         controller: equipCtrl,
-                        decoration:
-                            const InputDecoration(labelText: 'Equipamento (opcional)'),
+                        decoration: const InputDecoration(
+                          labelText: 'Equipamento (opcional)',
+                        ),
                       ),
                     ],
                   ),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx2), child: const Text('Cancelar')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx2),
+                      child: const Text('Cancelar'),
+                    ),
                     FilledButton(
                       onPressed: () async {
                         final name = nameCtrl.text.trim();
@@ -229,7 +243,10 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                 setState(() {});
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Exercício criado!')),
+                    SnackBar(
+                      content: Text(AppConstants.successExerciseCreated),
+                      duration: AppConstants.snackBarSuccessDuration,
+                    ),
                   );
                 }
               }
@@ -248,7 +265,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                     ),
                     onChanged: (_) => applyFilter(),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: UIConstants.paddingM),
                   DropdownButtonFormField<Exercise>(
                     value: selected,
                     isExpanded: true,
@@ -258,7 +275,7 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                         .toList(),
                     onChanged: (v) => setState(() => selected = v),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: UIConstants.paddingS),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
@@ -271,8 +288,9 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
               ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Cancelar')),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancelar'),
+                ),
                 FilledButton(
                   onPressed: selected == null
                       ? null
@@ -282,7 +300,10 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                           Navigator.of(ctx).pop();
                           await reload();
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${selected!.name} adicionado!')),
+                            SnackBar(
+                              content: Text(AppConstants.successExerciseAdded),
+                              duration: AppConstants.snackBarSuccessDuration,
+                            ),
                           );
                         },
                   child: const Text('Adicionar'),
@@ -297,9 +318,8 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
     searchCtrl.dispose();
   }
 
-@override
-Widget build(BuildContext context) {
-    // pegue o repositório via Riverpod
+  @override
+  Widget build(BuildContext context) {
     final repo = ref.read(workoutRepoProvider);
 
     if (_list.isEmpty) {
@@ -307,19 +327,19 @@ Widget build(BuildContext context) {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: PaddingConstants.allL,
       children: [
         Card(
           color: Colors.indigo.shade50,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: PaddingConstants.allL,
             child: Text(
-              'Volume total: ${_volume.toStringAsFixed(1)} kg',
+              'Volume total: ${_volume.toStringAsFixed(AppConstants.weightDecimalPlaces)} kg',
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: UIConstants.paddingL),
 
         // lista reordenável de exercícios
         ReorderableListView.builder(
@@ -338,24 +358,25 @@ Widget build(BuildContext context) {
             final we = _list[i];
 
             return Padding(
-              key: ValueKey(we.id), // chave usada pelo Reorderable
-              padding: const EdgeInsets.only(bottom: 12),
+              key: ValueKey(we.id),
+              padding: EdgeInsets.only(bottom: UIConstants.paddingM),
               child: Dismissible(
-                key: ValueKey('dismiss-${we.id}'), // chave do swipe
+                key: ValueKey('dismiss-${we.id}'),
                 direction: DismissDirection.endToStart,
                 background: Container(
                   alignment: Alignment.centerRight,
                   color: Colors.red.withOpacity(0.12),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: PaddingConstants.horizontalL,
                   child: const Icon(Icons.delete, color: Colors.red),
                 ),
                 confirmDismiss: (_) async {
-                  // diálogo rápido de confirmação (opcional)
                   return await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
                           title: const Text('Remover exercício'),
-                          content: const Text('Tem certeza que deseja remover este exercício da rotina?'),
+                          content: const Text(
+                            'Tem certeza que deseja remover este exercício da rotina?',
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx, false),
@@ -371,26 +392,25 @@ Widget build(BuildContext context) {
                       false;
                 },
                 onDismissed: (_) async {
-                  // remove no banco
                   await repo.deleteWorkoutExercise(we.id);
 
-                  // atualiza a UI localmente para dar sensação de velocidade
                   setState(() {
                     _list.removeWhere((e) => e.id == we.id);
                   });
 
-                  // recarrega dos dados e re-calcula volume, se seu reload fizer isso
                   await reload();
 
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Exercício removido da rotina.')),
+                      const SnackBar(
+                        content: Text('Exercício removido da rotina.'),
+                      ),
                     );
                   }
                 },
                 child: _ExerciseTile(
                   we: we,
-                  onChanged: reload, // mantém seu fluxo atual de atualização
+                  onChanged: reload,
                 ),
               ),
             );
@@ -410,96 +430,95 @@ class RestTimerBar extends ConsumerWidget {
     final st = ref.watch(restTimerProvider);
     final ctrl = ref.read(restTimerProvider.notifier);
 
-    // Mostrar a barra apenas quando houver algo a exibir (rodando ou pausado)
     final visible = st.running || st.remaining > 0;
 
     if (!visible) {
-      // Dica rápida para iniciar: atalhos 45/60/90
       return SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: 
-            Row(
-              children: [
-                const Text('Descanso rápido:'),
-                const SizedBox(width: 8),
-                for (final sec in const [45, 60, 90])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: OutlinedButton(
-                      onPressed: () => ctrl.start(sec),
-                      child: Text('${sec}s'),
-                    ),
-                  ),
-              ],
-            ),
+          padding: PaddingConstants.horizontalM.copyWith(
+            bottom: UIConstants.paddingS,
           ),
-        );
-      }
+          child: Row(
+            children: [
+              const Text('Descanso rápido:'),
+              SizedBox(width: UIConstants.paddingS),
+              for (final sec in AppConstants.restTimerQuickOptions)
+                Padding(
+                  padding: EdgeInsets.only(right: UIConstants.paddingS),
+                  child: OutlinedButton(
+                    onPressed: () => ctrl.start(sec),
+                    child: Text('${sec}s'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return SafeArea(
       child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: PaddingConstants.horizontalM.copyWith(
+          bottom: UIConstants.paddingS,
+        ),
+        padding: PaddingConstants.horizontalM.copyWith(
+          top: UIConstants.paddingS,
+          bottom: UIConstants.paddingS,
+        ),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(UIConstants.radiusM),
           boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black12)],
           border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-              // Tempo (ex: 00:45)
-                  SizedBox(
-                    width: 60,
-                    child: Text(
-                      st.label, // ← usa o label do estado atual do timer
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            SizedBox(
+              width: 60,
+              child: Text(
+                st.label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
-                  ),
-
-                // Barra de progresso
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: LinearProgressIndicator(
-                      value: st.progress,
-                      minHeight: 4,
-                    ),
-                  ),
-                ),
-
-              // Botões de controle
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (st.running)
-                      IconButton(
-                        icon: const Icon(Icons.pause),
-                        onPressed: ctrl.pause,
-                      )
-                    else if (st.remaining > 0)
-                      IconButton(
-                      icon: const Icon(Icons.play_arrow),
-                      onPressed: ctrl.resume,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.stop),
-                        onPressed: ctrl.stop,
-                      ),
-                    ],
-                  ),
-                ],
-              )
+              ),
             ),
-          );
-        }
-      }
+            Expanded(
+              child: Padding(
+                padding: PaddingConstants.horizontalM,
+                child: LinearProgressIndicator(
+                  value: st.progress,
+                  minHeight: 4,
+                ),
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (st.running)
+                  IconButton(
+                    icon: const Icon(Icons.pause),
+                    onPressed: ctrl.pause,
+                  )
+                else if (st.remaining > 0)
+                  IconButton(
+                    icon: const Icon(Icons.play_arrow),
+                    onPressed: ctrl.resume,
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.stop),
+                  onPressed: ctrl.stop,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _ExerciseTile extends ConsumerStatefulWidget {
   final WorkoutExercise we;
@@ -521,6 +540,50 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
     super.dispose();
   }
 
+  /// Validação de reps
+  String? _validateReps(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Informe o número de reps';
+    }
+
+    final reps = int.tryParse(value.trim());
+    if (reps == null) {
+      return 'Valor inválido';
+    }
+
+    if (reps < AppConstants.minReps) {
+      return 'Mínimo: ${AppConstants.minReps}';
+    }
+
+    if (reps > AppConstants.maxReps) {
+      return 'Máximo: ${AppConstants.maxReps}';
+    }
+
+    return null;
+  }
+
+  /// Validação de peso
+  String? _validateWeight(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Informe o peso';
+    }
+
+    final weight = double.tryParse(value.trim().replaceAll(',', '.'));
+    if (weight == null) {
+      return 'Valor inválido';
+    }
+
+    if (weight < AppConstants.minWeight) {
+      return 'Mínimo: ${AppConstants.minWeight} kg';
+    }
+
+    if (weight > AppConstants.maxWeight) {
+      return 'Máximo: ${AppConstants.maxWeight} kg';
+    }
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(workoutRepoProvider);
@@ -535,7 +598,7 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
         return Card(
           color: isDone ? Colors.green.shade50 : null,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: PaddingConstants.allM,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -543,11 +606,11 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                 Row(
                   children: [
                     const Icon(Icons.drag_handle),
-                    const SizedBox(width: 8),
+                    SizedBox(width: UIConstants.paddingS),
                     Expanded(
                       child: Wrap(
                         crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
+                        spacing: UIConstants.paddingS,
                         children: [
                           Text(
                             ex?.name ?? 'Exercício',
@@ -574,6 +637,7 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                             content: Text(
                               '${ex?.name ?? "Exercício"} ${v == true ? "concluído" : "reaberto"}',
                             ),
+                            duration: AppConstants.snackBarSuccessDuration,
                           ),
                         );
                       },
@@ -581,13 +645,13 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                   ],
                 ),
 
-                const SizedBox(height: 8),
+                SizedBox(height: UIConstants.paddingS),
 
-                // Lista de séries (com excluir)
+                // Lista de séries (com excluir e nota)
                 FutureBuilder<List<SetEntry>>(
                   future: repo.listSets(widget.we.id),
-                  builder: (context, snapSets) {
-                    final sets = snapSets.data ?? [];
+                  builder: (context, setsSnap) {
+                    final sets = setsSnap.data ?? [];
 
                     return Column(
                       children: [
@@ -596,15 +660,22 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                             children: sets.map((s) {
                               return ListTile(
                                 dense: true,
-                                leading: CircleAvatar(child: Text('${s.setIndex}')),
+                                leading: CircleAvatar(
+                                  radius: 14,
+                                  child: Text('${s.setIndex}'),
+                                ),
                                 title: Text('Reps: ${s.reps}'),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Peso: ${s.weight.toStringAsFixed(1)} kg'),
+                                    Text(
+                                      'Peso: ${s.weight.toStringAsFixed(AppConstants.weightDecimalPlaces)} kg',
+                                    ),
                                     if ((s.note ?? '').trim().isNotEmpty)
                                       Padding(
-                                        padding: const EdgeInsets.only(top: 2),
+                                        padding: EdgeInsets.only(
+                                          top: UIConstants.paddingXS,
+                                        ),
                                         child: Text(
                                           'Nota: ${s.note!.trim()}',
                                           style: Theme.of(context).textTheme.bodySmall,
@@ -615,12 +686,13 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    // Botão: adicionar/editar nota
                                     IconButton(
                                       tooltip: 'Adicionar nota',
                                       icon: const Icon(Icons.edit_note_outlined),
                                       onPressed: () async {
-                                        final controller = TextEditingController(text: s.note ?? '');
+                                        final controller = TextEditingController(
+                                          text: s.note ?? '',
+                                        );
                                         final newNote = await showDialog<String?>(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
@@ -628,8 +700,10 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                             content: TextField(
                                               controller: controller,
                                               maxLines: 3,
+                                              maxLength: AppConstants.maxNoteLength,
                                               decoration: const InputDecoration(
-                                                hintText: 'Ex.: pegada aberta, falha na 9ª rep, dor leve...',
+                                                hintText:
+                                                    'Ex.: pegada aberta, falha na 9ª rep, dor leve...',
                                                 border: OutlineInputBorder(),
                                               ),
                                             ),
@@ -639,7 +713,10 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                                 child: const Text('Cancelar'),
                                               ),
                                               FilledButton(
-                                                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                                                onPressed: () => Navigator.pop(
+                                                  ctx,
+                                                  controller.text.trim(),
+                                                ),
                                                 child: const Text('Salvar'),
                                               ),
                                             ],
@@ -647,17 +724,22 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                         );
 
                                         if (newNote != null) {
-                                          await repo.updateSetNote(s.id, newNote.isEmpty ? null : newNote);
+                                          await repo.updateSetNote(
+                                            s.id,
+                                            newNote.isEmpty ? null : newNote,
+                                          );
                                           if (!mounted) return;
-                                          await widget.onChanged(); // recarrega lista/volume
+                                          await widget.onChanged();
                                           ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Nota salva.')),
+                                            SnackBar(
+                                              content: const Text('Nota salva.'),
+                                              duration: AppConstants.snackBarSuccessDuration,
+                                            ),
                                           );
                                         }
                                       },
                                     ),
 
-                                    // Botão: remover série
                                     IconButton(
                                       icon: const Icon(Icons.delete, color: Colors.red),
                                       tooltip: 'Remover série',
@@ -667,7 +749,7 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                           builder: (ctx) => AlertDialog(
                                             title: const Text('Remover série'),
                                             content: Text(
-                                              'Remover a série ${s.setIndex} (${s.reps} reps, ${s.weight.toStringAsFixed(1)} kg)?',
+                                              'Remover a série ${s.setIndex} (${s.reps} reps, ${s.weight.toStringAsFixed(AppConstants.weightDecimalPlaces)} kg)?',
                                             ),
                                             actions: [
                                               TextButton(
@@ -688,7 +770,10 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                         await widget.onChanged();
 
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Série removida.')),
+                                          SnackBar(
+                                            content: const Text('Série removida.'),
+                                            duration: AppConstants.snackBarSuccessDuration,
+                                          ),
                                         );
                                       },
                                     ),
@@ -698,42 +783,71 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                             }).toList(),
                           ),
 
-                        const SizedBox(height: 8),
+                        SizedBox(height: UIConstants.paddingS),
 
-                        // Adicionar nova série (SEM iniciar timer automaticamente)
+                        // Adicionar nova série COM VALIDAÇÃO
                         Row(
                           children: [
                             Expanded(
-                              child: TextField(
+                              child: TextFormField(
                                 controller: _repsCtrl,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(labelText: 'Reps'),
+                                decoration: InputDecoration(
+                                  labelText: 'Reps',
+                                  helperText:
+                                      '${AppConstants.minReps}-${AppConstants.maxReps}',
+                                  errorMaxLines: 2,
+                                ),
+                                validator: _validateReps,
+                                autovalidateMode: AutovalidateMode.onUserInteraction,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: UIConstants.paddingM),
                             Expanded(
-                              child: TextField(
+                              child: TextFormField(
                                 controller: _weightCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: const InputDecoration(labelText: 'Peso (kg)'),
+                                keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: 'Peso (kg)',
+                                  helperText:
+                                      '${AppConstants.minWeight}-${AppConstants.maxWeight}',
+                                  errorMaxLines: 2,
+                                ),
+                                validator: _validateWeight,
+                                autovalidateMode: AutovalidateMode.onUserInteraction,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: UIConstants.paddingM),
                             FilledButton.icon(
                               icon: const Icon(Icons.add),
                               label: const Text(''),
                               onPressed: () async {
-                                final reps = int.tryParse(_repsCtrl.text.trim());
-                                final weight = double.tryParse(
-                                  _weightCtrl.text.trim().replaceAll(',', '.'),
-                                );
+                                // Valida antes de salvar
+                                final repsError = _validateReps(_repsCtrl.text);
+                                final weightError = _validateWeight(_weightCtrl.text);
 
-                                if (reps == null || weight == null) {
+                                if (repsError != null || weightError != null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Informe reps e peso válidos.')),
+                                    SnackBar(
+                                      content: Text(
+                                        repsError ??
+                                            weightError ??
+                                            AppConstants.errorInvalidReps,
+                                      ),
+                                      duration: AppConstants.snackBarErrorDuration,
+                                      backgroundColor:
+                                          Theme.of(context).colorScheme.error,
+                                    ),
                                   );
                                   return;
                                 }
+
+                                final reps = int.parse(_repsCtrl.text.trim());
+                                final weight = double.parse(
+                                  _weightCtrl.text.trim().replaceAll(',', '.'),
+                                );
 
                                 await repo.addSetQuick(
                                   workoutExerciseId: widget.we.id,
@@ -747,9 +861,16 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                                 _weightCtrl.clear();
 
                                 await widget.onChanged();
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(AppConstants.successSetAdded),
+                                    duration: AppConstants.snackBarSuccessDuration,
+                                  ),
+                                );
                               },
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: UIConstants.paddingS),
                           ],
                         ),
                       ],
