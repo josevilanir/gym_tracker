@@ -296,6 +296,18 @@ class AppDatabase extends _$AppDatabase {
     return sets.length;
   }
 
+  // --- UPDATE de nota da série (SetEntry) ---
+  Future<void> updateSetNote({
+    required String setId,
+    String? note,
+  }) async {
+    await (update(setEntries)..where((s) => s.id.equals(setId))).write(
+      SetEntriesCompanion(
+        note: Value(note),
+      ),
+    );
+  }
+
   /// Helper: retorna início e fim (epoch) de um intervalo "mês atual"
   ({int startEpoch, int endEpoch}) monthBounds(DateTime now) {
     final start = DateTime(now.year, now.month, 1).millisecondsSinceEpoch;
