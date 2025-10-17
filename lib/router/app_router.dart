@@ -9,12 +9,13 @@ import '../features/settings/pages/settings_page.dart';
 import '../features/workout/pages/workout_detail_page.dart';
 import '../features/workout/pages/workout_editor_page.dart';
 import '../features/workout/pages/history_workout_detail_page.dart';
-
+import '../features/workout/pages/progress_page.dart'; 
 
 /// Rotas nomeadas
 abstract class AppRoutes {
   static const shell = '/';
   static const today = '/today';
+  static const progress = '/progress'; 
   static const history = '/history';
   static const catalog = '/catalog';
   static const settings = '/settings';
@@ -36,15 +37,20 @@ final router = GoRouter(
               const NoTransitionPage(child: TodayPage()),
         ),
         GoRoute(
+          path: AppRoutes.progress,
+          name: 'progress',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ProgressPage()),
+        ),
+        GoRoute(
           path: AppRoutes.history,
           name: 'history',
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: HistoryPage()),
           routes: [
-            // 👇 detalhe como child de /history
             GoRoute(
               name: 'history_workout_detail',
-              path: 'workout/:id', // URL final: /history/workout/<id>
+              path: 'workout/:id', 
               builder: (context, state) {
                 final id = state.pathParameters['id']!;
                 return HistoryWorkoutDetailPage(workoutId: id);
@@ -94,10 +100,11 @@ class _NavShell extends StatefulWidget {
 
 class _NavShellState extends State<_NavShell> {
   int _indexFromLocation(String location) {
-    if (location.startsWith(AppRoutes.history)) return 1;
-    if (location.startsWith(AppRoutes.catalog)) return 2;
-    if (location.startsWith(AppRoutes.settings)) return 3;
-    return 0;
+    if (location.startsWith(AppRoutes.progress)) return 1;
+    if (location.startsWith(AppRoutes.history)) return 2;
+    if (location.startsWith(AppRoutes.catalog)) return 3;
+    if (location.startsWith(AppRoutes.settings)) return 4;
+    return 0; // today
   }
 
   void _onTap(int index, BuildContext context) {
@@ -105,13 +112,16 @@ class _NavShellState extends State<_NavShell> {
       case 0:
         context.go(AppRoutes.today);
         break;
-      case 1:
-        context.go(AppRoutes.history);
+      case 1: // << NOVO
+        context.go(AppRoutes.progress);
         break;
       case 2:
-        context.go(AppRoutes.catalog);
+        context.go(AppRoutes.history);
         break;
       case 3:
+        context.go(AppRoutes.catalog);
+        break;
+      case 4:
         context.go(AppRoutes.settings);
         break;
     }
@@ -132,6 +142,12 @@ class _NavShellState extends State<_NavShell> {
             icon: Icon(Icons.today_outlined),
             selectedIcon: Icon(Icons.today),
             label: 'Hoje',
+          ),
+          // << NOVO: aba Progresso
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Progresso',
           ),
           NavigationDestination(
             icon: Icon(Icons.history_outlined),
