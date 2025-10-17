@@ -589,112 +589,170 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
                   builder: (context, snapSets) {
                     final sets = snapSets.data ?? [];
 
-                    return Column(
-                      children: [
-                        if (sets.isNotEmpty)
-                          Column(
-                            children: sets.map((s) {
-                              return ListTile(
-                                dense: true,
-                                leading: CircleAvatar(child: Text('${s.setIndex}')),
-                                title: Text('Reps: ${s.reps}'),
-                                subtitle: Text('Peso: ${s.weight.toStringAsFixed(1)} kg'),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  tooltip: 'Remover série',
-                                  onPressed: () async {
-                                    // confirmação rápida (opcional)
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: const Text('Remover série'),
-                                        content: Text(
-                                          'Remover a série ${s.setIndex} (${s.reps} reps, ${s.weight.toStringAsFixed(1)} kg)?',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(ctx, false),
-                                            child: const Text('Cancelar'),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () => Navigator.pop(ctx, true),
-                                            child: const Text('Remover'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-
-                                    if (confirm != true) return;
-
-                                    await repo.deleteSet(s.id);
-                                    if (!mounted) return;
-                                    await widget.onChanged(); // recarrega lista e volume
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Série removida.')),
-                                    );
-                                  },
-                                ),
-                              );
-                            }).toList(),
+  return Column(
+  children: [
+    if (sets.isNotEmpty)
+      Column(
+        children: sets.map((s) {
+          return ListTile(
+            dense: true,
+            leading: CircleAvatar(child: Text('${s.setIndex}')),
+            title: Text('Reps: ${s.reps}'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Peso: ${s.weight.toStringAsFixed(1)} kg'),
+                if ((s.note ?? '').trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Nota: ${s.note!.trim()}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Botão: adicionar/editar nota
+                IconButton(
+                  tooltip: 'Adicionar nota',
+                  icon: const Icon(Icons.edit_note_outlined),
+                  onPressed: () async {
+                    final controller = TextEditingController(text: s.note ?? '');
+                    final newNote = await showDialog<String?>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Nota da série'),
+                        content: TextField(
+                          controller: controller,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            hintText: 'Ex.: pegada aberta, falha na 9ª rep, dor leve...',
+                            border: OutlineInputBorder(),
                           ),
-
-                        const SizedBox(height: 8),
-
-                        // Adicionar nova série
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _repsCtrl,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(labelText: 'Reps'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                controller: _weightCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: const InputDecoration(labelText: 'Peso (kg)'),
-                                ),
-                            ),
-                            const SizedBox(width: 12),
-                      // Botão Adicionar (SEM iniciar o timer automaticamente)
-                            FilledButton.icon(
-                                icon: const Icon(Icons.add),
-                                label: const Text(''),
-                                onPressed: () async {
-                              final reps = int.tryParse(_repsCtrl.text.trim());
-                              final weight = double.tryParse(
-                                _weightCtrl.text.trim().replaceAll(',', '.'),
-                              );
-
-                              if (reps == null || weight == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Informe reps e peso válidos.')),
-                              );
-                            return;
-                            }
-
-                            await repo.addSetQuick(
-                              workoutExerciseId: widget.we.id,
-                              reps: reps,
-                              weight: weight,
-                            );
-
-                            if (!mounted) return;
-
-                            _repsCtrl.clear();
-                            _weightCtrl.clear();
-
-                            await widget.onChanged();
-                            },
-                            ),
-                              const SizedBox(width: 8),
-                          ],
                         ),
-                      ],
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, null),
+                            child: const Text('Cancelar'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                            child: const Text('Salvar'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (newNote != null) {
+                      await repo.updateSetNote(s.id, newNote.isEmpty ? null : newNote);
+                      if (!mounted) return;
+                      await widget.onChanged(); // recarrega lista/volume
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Nota salva.')),
+                      );
+                    }
+                  },
+                ),
+
+                // Botão: remover série
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  tooltip: 'Remover série',
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Remover série'),
+                        content: Text(
+                          'Remover a série ${s.setIndex} (${s.reps} reps, ${s.weight.toStringAsFixed(1)} kg)?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancelar'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Remover'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+
+                    await repo.deleteSet(s.id);
+                    if (!mounted) return;
+                    await widget.onChanged();
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Série removida.')),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+
+    const SizedBox(height: 8),
+
+    // Adicionar nova série (SEM iniciar timer automaticamente)
+    Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _repsCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Reps'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            controller: _weightCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Peso (kg)'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.add),
+          label: const Text(''),
+          onPressed: () async {
+            final reps = int.tryParse(_repsCtrl.text.trim());
+            final weight = double.tryParse(
+              _weightCtrl.text.trim().replaceAll(',', '.'),
+            );
+
+            if (reps == null || weight == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Informe reps e peso válidos.')),
+              );
+              return;
+                              }
+
+                                await repo.addSetQuick(
+                                  workoutExerciseId: widget.we.id,
+                                  reps: reps,
+                                  weight: weight,
+                                );
+
+                                if (!mounted) return;
+
+                                  _repsCtrl.clear();
+                                  _weightCtrl.clear();
+
+                                await widget.onChanged();
+                              },
+                            ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
+                     ],
                     );
                   },
                 ),

@@ -187,7 +187,7 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                         ),
                       ),
 
-                    // Séries com destaque de 1RM
+                    // Séries com destaque de 1RM + NOTA exibida
                     FutureBuilder<List<SetEntry>>(
                       future: repo.listSets(we.id),
                       builder: (context, setsSnap) {
@@ -249,14 +249,28 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                                 child: Text('${s.setIndex}'),
                               ),
                               title: Text(
-                                  'Reps: ${s.reps}   Peso: ${(s.weight ?? 0).toStringAsFixed(1)} kg'),
-                              subtitle: (e1rm == null)
-                                  ? const Text('e1RM: —')
-                                  : Text(
-                                      'e1RM (Epley): ${_fmtKg(e1rm)}',
-                                      style: const TextStyle(
-                                          fontStyle: FontStyle.italic),
+                                'Reps: ${s.reps}   Peso: ${(s.weight ?? 0).toStringAsFixed(1)} kg',
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  (e1rm == null)
+                                      ? const Text('e1RM: —')
+                                      : Text(
+                                          'e1RM (Epley): ${_fmtKg(e1rm)}',
+                                          style: const TextStyle(
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                  if ((s.note ?? '').trim().isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: Text(
+                                        'Nota: ${s.note!.trim()}',
+                                      ),
                                     ),
+                                ],
+                              ),
                               trailing: isHighlight
                                   ? Chip(
                                       avatar:
