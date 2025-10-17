@@ -19,6 +19,11 @@ class TodayPage extends ConsumerWidget {
         title: const Text('Hoje'),
         actions: [
           IconButton(
+            tooltip: 'Progresso',
+            onPressed: () => context.pushNamed('progress'),
+            icon: const Icon(Icons.bar_chart_rounded),
+          ),
+          IconButton(
             tooltip: 'Notificações (em breve)',
             onPressed: () {},
             icon: const Icon(Icons.alarm),
