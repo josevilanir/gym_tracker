@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../controllers/providers.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/repositories/workout_repository.dart';
+import '../../../core/calculations.dart'; 
 
 /// Fórmula padrão de 1RM usada nas exibições
 const _kFormula = OneRmFormula.epley;
@@ -27,9 +28,7 @@ class HistoryWorkoutDetailPage extends ConsumerWidget {
       future: repo.getWorkout(workoutId),
       builder: (context, snapW) {
         final w = snapW.data;
-        final title = (w?.title?.trim().isNotEmpty ?? false)
-            ? w!.title!
-            : 'Treino';
+        final title = (w?.title?.trim().isNotEmpty ?? false) ? w!.title! : 'Treino';
 
         return Scaffold(
           appBar: AppBar(
@@ -135,11 +134,11 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
             return Card(
               elevation: 2,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Cabeçalho
+                    // Cabeçalho do exercício
                     Row(
                       children: [
                         const Icon(Icons.fitness_center),
@@ -150,16 +149,14 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ),
-                        if (we.done)
-                          const Icon(Icons.check, color: Colors.green),
+                        if (we.done) const Icon(Icons.check, color: Colors.green),
                       ],
                     ),
                     const SizedBox(height: 8),
 
                     // Chips com melhores 1RM
                     if (bests != null &&
-                        (bests.bestInWorkout != null ||
-                            bests.bestAllTime != null))
+                        (bests.bestInWorkout != null || bests.bestAllTime != null))
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8.0),
                         child: Wrap(
@@ -180,8 +177,7 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                                   'PR histórico: ${_fmtKg(bests.bestAllTime!)}',
                                 ),
                                 backgroundColor: scheme.secondaryContainer,
-                                labelStyle: TextStyle(
-                                    color: scheme.onSecondaryContainer),
+                                labelStyle: TextStyle(color: scheme.onSecondaryContainer),
                               ),
                           ],
                         ),
@@ -195,8 +191,7 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
 
                         if (sets.isEmpty) {
                           return const Padding(
-                            padding:
-                                EdgeInsets.only(bottom: 8.0, left: 4, top: 4),
+                            padding: EdgeInsets.only(bottom: 8.0, left: 4, top: 4),
                             child: Text('Sem séries registradas'),
                           );
                         }
@@ -205,18 +200,19 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                         final perSetOneRm = <double?>[];
 
                         for (final s in sets) {
-                          final w = s.weight ?? 0;
+                          final w = s.weight;
                           if (w <= 0) {
                             perSetOneRm.add(null);
                             continue;
                           }
+                          // << USA A FUNÇÃO CENTRAL
                           final oneRm = estimateOneRm(
                             reps: s.reps,
                             weight: w,
                             formula: _kFormula,
                           );
                           perSetOneRm.add(oneRm);
-                          if (localBest == null || oneRm > localBest!) {
+                          if (localBest == null || oneRm > localBest) {
                             localBest = oneRm;
                           }
                         }
@@ -225,8 +221,7 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                         if (localBest != null) {
                           for (var i = 0; i < perSetOneRm.length; i++) {
                             final val = perSetOneRm[i];
-                            if (val != null &&
-                                (localBest! - val).abs() <= _epsCompare) {
+                            if (val != null && (localBest - val).abs() <= _epsCompare) {
                               firstHighlightIndex = i;
                               break;
                             }
@@ -243,13 +238,15 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                               dense: true,
                               visualDensity: VisualDensity.compact,
                               contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 2),
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
                               leading: CircleAvatar(
                                 radius: 14,
                                 child: Text('${s.setIndex}'),
                               ),
                               title: Text(
-                                'Reps: ${s.reps}   Peso: ${(s.weight ?? 0).toStringAsFixed(1)} kg',
+                                'Reps: ${s.reps}   Peso: ${s.weight.toStringAsFixed(1)} kg',
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +254,7 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                                   (e1rm == null)
                                       ? const Text('e1RM: —')
                                       : Text(
-                                          'e1RM (Epley): ${_fmtKg(e1rm)}',
+                                          'e1RM (${getFormulaDescription(_kFormula)}): ${_fmtKg(e1rm)}',
                                           style: const TextStyle(
                                             fontStyle: FontStyle.italic,
                                           ),
@@ -265,19 +262,15 @@ class _ReadOnlyExerciseTile extends ConsumerWidget {
                                   if ((s.note ?? '').trim().isNotEmpty)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 2.0),
-                                      child: Text(
-                                        'Nota: ${s.note!.trim()}',
-                                      ),
+                                      child: Text('Nota: ${s.note!.trim()}'),
                                     ),
                                 ],
                               ),
                               trailing: isHighlight
                                   ? Chip(
-                                      avatar:
-                                          const Icon(Icons.star, size: 16),
+                                      avatar: const Icon(Icons.star, size: 16),
                                       label: const Text('Destaque'),
-                                      backgroundColor:
-                                          scheme.secondaryContainer,
+                                      backgroundColor: scheme.secondaryContainer,
                                       labelStyle: TextStyle(
                                         color: scheme.onSecondaryContainer,
                                         fontWeight: FontWeight.w600,
