@@ -1,8 +1,9 @@
-// lib/features/workout/pages/history_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/validators.dart';
+import '../../../core/constants.dart';
 import '../controllers/providers.dart';
 import '../../../data/db/app_database.dart';
 
@@ -10,6 +11,7 @@ enum _QuickRange { last7, last30, thisMonth, all, custom }
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
+  
   @override
   ConsumerState<HistoryPage> createState() => _HistoryPageState();
 }
@@ -35,124 +37,268 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       case _QuickRange.all:
         return (DateTime(2000, 1, 1), now);
       case _QuickRange.custom:
-        if (_customRange != null) return (_customRange!.start, _customRange!.end);
+        if (_customRange != null) {
+          return (_customRange!.start, _customRange!.end);
+        }
         return (now.subtract(const Duration(days: 6)), now);
     }
   }
 
   Future<List<Workout>> _loadWorkouts() async {
-    final repo = ref.read(workoutRepoProvider);
-    final (start, end) = _currentBounds();
-    return repo.listFinishedWorkoutsBetween(start: start, end: end);
+    try {
+      final repo = ref.read(workoutRepoProvider);
+      final (start, end) = _currentBounds();
+      return await repo.listFinishedWorkoutsBetween(start: start, end: end);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Erro ao carregar treinos: $e')),
+              ],
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: AppConstants.snackBarErrorDuration,
+          ),
+        );
+      }
+      rethrow;
+    }
   }
 
   /// Volume diário simples (nº de séries) – inclui dias sem treino com zero
   Future<List<({DateTime day, int volume})>> _loadDailyVolume() async {
-    final repo = ref.read(workoutRepoProvider);
-    final (start, end) = _currentBounds();
+    try {
+      final repo = ref.read(workoutRepoProvider);
+      final (start, end) = _currentBounds();
 
-    final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day);
+      final startDay = DateTime(start.year, start.month, start.day);
+      final endDay = DateTime(end.year, end.month, end.day);
 
-    final workouts = await repo.listFinishedWorkoutsBetween(
-      start: startDay,
-      end: DateTime(endDay.year, endDay.month, endDay.day, 23, 59, 59),
-    );
+      final workouts = await repo.listFinishedWorkoutsBetween(
+        start: startDay,
+        end: DateTime(endDay.year, endDay.month, endDay.day, 23, 59, 59),
+      );
 
-    final Map<DateTime, int> perDay = {};
-    for (final w in workouts) {
-      final d = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
-      final key = DateTime(d.year, d.month, d.day);
-      final sets = await repo.countSetsInWorkout(w.id);
-      perDay.update(key, (old) => old + sets, ifAbsent: () => sets);
+      final Map<DateTime, int> perDay = {};
+      for (final w in workouts) {
+        final d = DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+        final key = DateTime(d.year, d.month, d.day);
+        final sets = await repo.countSetsInWorkout(w.id);
+        perDay.update(key, (old) => old + sets, ifAbsent: () => sets);
+      }
+
+      final totalDays = endDay.difference(startDay).inDays + 1;
+      return List.generate(totalDays, (i) {
+        final d = DateTime(startDay.year, startDay.month, startDay.day + i);
+        final key = DateTime(d.year, d.month, d.day);
+        return (day: d, volume: perDay[key] ?? 0);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Erro ao carregar gráfico: $e')),
+              ],
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return [];
     }
-
-    final totalDays = endDay.difference(startDay).inDays + 1;
-    return List.generate(totalDays, (i) {
-      final d = DateTime(startDay.year, startDay.month, startDay.day + i);
-      final key = DateTime(d.year, d.month, d.day);
-      return (day: d, volume: perDay[key] ?? 0);
-    });
   }
 
-  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(workoutRepoProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Acompanhamento'),
+        title: const Text('Histórico'),
         actions: [
           IconButton(
-            tooltip: 'Escolher intervalo…',
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () async {
-              final now = DateTime.now();
-              final picked = await showDateRangePicker(
-                context: context,
-                firstDate: DateTime(now.year - 2),
-                lastDate: DateTime(now.year + 1),
-                initialDateRange: _customRange ??
-                    DateTimeRange(
-                      start: DateTime(now.year, now.month, now.day)
-                          .subtract(const Duration(days: 6)),
-                      end: now,
-                    ),
-              );
-              if (picked != null) {
-                setState(() {
-                  _range = _QuickRange.custom;
-                  _customRange = picked;
-                });
-              }
-            },
+            tooltip: 'Registrar treino retroativo',
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => _openRegisterPastWorkout(context),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('Registrar treino'),
-        onPressed: () => _openRegisterPastWorkout(context),
-      ),
       body: Column(
         children: [
+          // Filtros rápidos
+          _QuickFilters(
+            current: _range,
+            onSelected: (r) async {
+              if (r == _QuickRange.custom) {
+                final picked = await showDateRangePicker(
+                  context: context,
+                  firstDate: DateTime(DateTime.now().year - 2),
+                  lastDate: DateTime.now(),
+                  initialDateRange: _customRange,
+                );
+                if (picked != null) {
+                  setState(() {
+                    _customRange = picked;
+                    _range = r;
+                  });
+                }
+              } else {
+                setState(() => _range = r);
+              }
+            },
+          ),
           const SizedBox(height: 8),
-          _QuickFilters(current: _range, onSelected: (r) => setState(() => _range = r)),
-          const SizedBox(height: 8),
+
+          // Conteúdo principal
           Expanded(
             child: FutureBuilder<List<({DateTime day, int volume})>>(
               future: _loadDailyVolume(),
-              builder: (context, volSnap) {
+              builder: (context, vSnap) {
+                if (vSnap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (vSnap.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 64,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Erro ao carregar dados',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${vSnap.error}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: () => setState(() {}),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Tentar novamente'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final volumes = vSnap.data ?? const <({DateTime day, int volume})>[];
+
                 return FutureBuilder<List<Workout>>(
                   future: _loadWorkouts(),
                   builder: (context, wSnap) {
-                    if (volSnap.connectionState == ConnectionState.waiting ||
-                        wSnap.connectionState == ConnectionState.waiting) {
+                    if (wSnap.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    final volumes = volSnap.data ?? const <({DateTime day, int volume})>[];
+                    if (wSnap.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 64,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Erro ao carregar treinos',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${wSnap.error}',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: () => setState(() {}),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Tentar novamente'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
                     final workouts = wSnap.data ?? <Workout>[];
 
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
+                        // Gráfico de volume
                         _VolumeChartSimpleCard(volumes: volumes),
                         const SizedBox(height: 12),
 
+                        // Lista de treinos ou empty state
                         if (workouts.isEmpty)
                           Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.history, size: 48, color: Colors.grey),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Nenhum treino concluído no período selecionado.',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.history,
+                                    size: 80,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withOpacity(0.3),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    'Nenhum treino concluído',
+                                    style: Theme.of(context).textTheme.titleLarge,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Nenhum treino concluído no período selecionado',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  FilledButton.icon(
+                                    onPressed: () =>
+                                        _openRegisterPastWorkout(context),
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Registrar treino'),
+                                  ),
+                                ],
+                              ),
                             ),
                           )
                         else
@@ -163,36 +309,60 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                 repo.countSetsInWorkout(w.id),
                               ]),
                               builder: (context, AsyncSnapshot<List<int>> s2) {
-                                final exCount =
-                                    (s2.data != null && s2.data!.isNotEmpty) ? s2.data![0] : 0;
-                                final setCount = (s2.data != null && s2.data!.length > 1)
+                                if (s2.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return const Card(
+                                    child: ListTile(
+                                      leading: CircularProgressIndicator(),
+                                      title: Text('Carregando...'),
+                                    ),
+                                  );
+                                }
+
+                                final exCount = (s2.data != null &&
+                                        s2.data!.isNotEmpty)
+                                    ? s2.data![0]
+                                    : 0;
+                                final setCount = (s2.data != null &&
+                                        s2.data!.length > 1)
                                     ? s2.data![1]
                                     : 0;
 
-                                final date =
-                                    DateTime.fromMillisecondsSinceEpoch(w.dateEpoch);
+                                final date = DateTime.fromMillisecondsSinceEpoch(
+                                    w.dateEpoch);
                                 final dateStr =
                                     DateFormat('dd/MM, HH:mm').format(date);
-                                final title = (w.title?.trim().isNotEmpty ?? false)
-                                    ? w.title!
-                                    : 'Treino sem nome';
+                                final title =
+                                    (w.title?.trim().isNotEmpty ?? false)
+                                        ? w.title!
+                                        : 'Treino sem nome';
 
                                 return Card(
                                   child: ListTile(
-                                    leading: const Icon(Icons.check_circle, color: Colors.green),
+                                    leading: const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green,
+                                    ),
                                     title: Text(title),
                                     subtitle: Text('Concluído em $dateStr'),
                                     trailing: Wrap(
                                       spacing: 8,
-                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
-                                        _ChipStat(icon: Icons.fitness_center, label: '$exCount'),
-                                        _ChipStat(icon: Icons.format_list_numbered, label: '$setCount'),
+                                        _ChipStat(
+                                          icon: Icons.fitness_center,
+                                          label: '$exCount',
+                                        ),
+                                        _ChipStat(
+                                          icon: Icons.format_list_numbered,
+                                          label: '$setCount',
+                                        ),
                                       ],
                                     ),
                                     onTap: () => context.pushNamed(
                                       'history_workout_detail',
-                                      pathParameters: {'id': w.id}, // <- id do treino da lista
+                                      pathParameters: {'id': w.id},
                                     ),
                                   ),
                                 );
@@ -214,139 +384,370 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   Future<void> _openRegisterPastWorkout(BuildContext context) async {
     final repo = ref.read(workoutRepoProvider);
     final now = DateTime.now();
+    final formKey = GlobalKey<FormState>();
+    final titleCtrl = TextEditingController();
 
-    DateTime selected = DateTime(now.year, now.month, now.day, now.hour, now.minute);
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        final titleCtrl = TextEditingController();
-
-        return Padding(
-          padding: MediaQuery.of(ctx).viewInsets.add(const EdgeInsets.all(16)),
-          child: FutureBuilder<List<Template>>(
-            future: repo.listTemplates(),
-            builder: (context, snap) {
-              final templates = snap.data ?? [];
-
-              return StatefulBuilder(
-                builder: (context, setLocal) {
-                  return SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('Registrar treino em outra data',
-                            style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(height: 12),
-
-                        TextField(
-                          controller: titleCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Título (opcional)',
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Seletor de data/hora
-                        ListTile(
-                          leading: const Icon(Icons.event),
-                          title: Text(DateFormat('dd/MM/yyyy – HH:mm').format(selected)),
-                          subtitle: const Text('Toque para alterar data e hora'),
-                          onTap: () async {
-                            final d = await showDatePicker(
-                              context: context,
-                              firstDate: DateTime(now.year - 2),
-                              lastDate: DateTime(now.year + 1),
-                              initialDate: selected,
-                            );
-                            if (d == null) return;
-                            final t = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(selected),
-                            );
-                            setLocal(() {
-                              selected = DateTime(
-                                d.year, d.month, d.day,
-                                t?.hour ?? selected.hour,
-                                t?.minute ?? selected.minute,
-                              );
-                            });
-                          },
-                        ),
-
-                        const SizedBox(height: 16),
-                        Text('Começar usando uma rotina?', style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 8),
-
-                        if (templates.isEmpty)
-                          const Text('Nenhuma rotina salva. Você pode registrar um treino vazio.')
-                        else
-                          ...templates.map((t) => ListTile(
-                                leading: const Icon(Icons.bookmark_added_outlined),
-                                title: Text(t.name),
-                                trailing: TextButton(
-                                  child: const Text('Usar'),
-                                  onPressed: () async {
-                                  // cria o treino retroativo a partir da rotina, mas como rascunho (não concluído)
-                                    final wid = await repo.createWorkoutFromTemplateAt(
-                                      templateId: t.id,
-                                      date: selected, // data escolhida no calendário
-                                      title: titleCtrl.text.trim().isEmpty ? t.name : titleCtrl.text.trim(),
-                                      done: false, // <- importante: cria como rascunho, para poder editar
-                                    );
-
-                                    if (context.mounted) {
-                                      Navigator.pop(context); // fecha o bottom sheet
-                                      // leva o usuário direto para a tela de edição (detalhe do treino)
-                                      context.pushNamed(
-                                        'workout_detail',
-                                        pathParameters: {'id': wid},
-                                      );
-                                    }
-                                  },
-                                ),
-                              )),
-
-                        const Divider(height: 24),
-
-                        FilledButton.icon(
-                          icon: const Icon(Icons.playlist_add),
-                          label: const Text('Registrar treino nessa data'),
-                          onPressed: () async {
-                            // cria um treino vazio NA data, como rascunho
-                            final wid = await repo.createWorkoutAt(
-                              date: selected,                                // a DateTime escolhida
-                              title: titleCtrl.text.trim().isEmpty ? null : titleCtrl.text.trim(),
-                              done: false,                                   // <- importante: rascunho
-                            );
-
-                            if (context.mounted) {
-                              Navigator.pop(context); // fecha o bottom sheet
-                              context.pushNamed(
-                                'workout_detail',
-                                pathParameters: {'id': wid},
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        );
-      },
+    DateTime selected = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
     );
 
-    setState(() {}); // atualiza a lista/gráfico depois do cadastro
+    try {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (ctx) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: FutureBuilder<List<Template>>(
+              future: repo.listTemplates(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (snap.hasError) {
+                  return SizedBox(
+                    height: 200,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Erro ao carregar rotinas',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final templates = snap.data ?? [];
+
+                return StatefulBuilder(
+                  builder: (context, setLocal) {
+                    return SingleChildScrollView(
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Registrar treino em outra data',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Campo de título com validação
+                            TextFormField(
+                              controller: titleCtrl,
+                              decoration: InputDecoration(
+                                labelText: 'Título (opcional)',
+                                hintText: 'Ex: Treino de pernas intenso',
+                                prefixIcon: const Icon(Icons.title),
+                                helperText: 'Deixe vazio para título automático',
+                                counterText:
+                                    '${titleCtrl.text.length}/${AppConstants.maxWorkoutTitleLength}',
+                              ),
+                              textCapitalization: TextCapitalization.sentences,
+                              maxLength: AppConstants.maxWorkoutTitleLength,
+                              validator: Validators.workoutTitle,
+                              autovalidateMode:
+                                  AutovalidateMode.onUserInteraction,
+                              onChanged: (_) => setLocal(() {}),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Seletor de data/hora
+                            Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.event),
+                                title: Text(
+                                  DateFormat('dd/MM/yyyy – HH:mm')
+                                      .format(selected),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: const Text(
+                                  'Toque para alterar data e hora',
+                                ),
+                                trailing: const Icon(Icons.edit),
+                                onTap: () async {
+                                  final d = await showDatePicker(
+                                    context: context,
+                                    firstDate: DateTime(now.year - 2),
+                                    lastDate: DateTime(now.year + 1),
+                                    initialDate: selected,
+                                  );
+                                  if (d == null) return;
+
+                                  if (!context.mounted) return;
+                                  final t = await showTimePicker(
+                                    context: context,
+                                    initialTime:
+                                        TimeOfDay.fromDateTime(selected),
+                                  );
+
+                                  setLocal(() {
+                                    selected = DateTime(
+                                      d.year,
+                                      d.month,
+                                      d.day,
+                                      t?.hour ?? selected.hour,
+                                      t?.minute ?? selected.minute,
+                                    );
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Seleção de template
+                            Text(
+                              'Começar usando uma rotina?',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+
+                            if (templates.isEmpty)
+                              Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.bookmark_add_outlined,
+                                        size: 48,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withOpacity(0.5),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Nenhuma rotina salva',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Você pode registrar um treino vazio',
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else
+                              ...templates.map((t) => Card(
+                                    child: ListTile(
+                                      leading: const Icon(
+                                        Icons.bookmark_outlined,
+                                      ),
+                                      title: Text(t.name),
+                                      trailing: TextButton(
+                                        child: const Text('Usar'),
+                                        onPressed: () async {
+                                          try {
+                                            // Valida título se preenchido
+                                            final titleValue =
+                                                titleCtrl.text.trim();
+                                            if (titleValue.isNotEmpty) {
+                                              final error =
+                                                  Validators.workoutTitle(
+                                                      titleValue);
+                                              if (error != null) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(error),
+                                                    backgroundColor:
+                                                        Theme.of(context)
+                                                            .colorScheme
+                                                            .error,
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                            }
+
+                                            final wid = await repo
+                                                .createWorkoutFromTemplateAt(
+                                              templateId: t.id,
+                                              date: selected,
+                                              title: titleValue.isEmpty
+                                                  ? t.name
+                                                  : titleValue,
+                                              done: false,
+                                            );
+
+                                            if (!context.mounted) return;
+                                            Navigator.pop(context);
+                                            context.pushNamed(
+                                              'workout_detail',
+                                              pathParameters: {'id': wid},
+                                            );
+                                          } catch (e) {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Row(
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.error_outline,
+                                                      color: Colors.white,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Text(
+                                                        'Erro ao criar treino: $e',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                backgroundColor:
+                                                    Theme.of(context)
+                                                        .colorScheme
+                                                        .error,
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  )),
+
+                            const SizedBox(height: 16),
+                            const Divider(height: 1),
+                            const SizedBox(height: 16),
+
+                            // Botão de registrar treino vazio
+                            FilledButton.icon(
+                              icon: const Icon(Icons.playlist_add),
+                              label: const Text('Registrar treino nessa data'),
+                              onPressed: () async {
+                                try {
+                                  // Valida título se preenchido
+                                  final titleValue = titleCtrl.text.trim();
+                                  if (titleValue.isNotEmpty) {
+                                    final error =
+                                        Validators.workoutTitle(titleValue);
+                                    if (error != null) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(error),
+                                          backgroundColor: Theme.of(context)
+                                              .colorScheme
+                                              .error,
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                  }
+
+                                  final wid = await repo.createWorkoutAt(
+                                    date: selected,
+                                    title: titleValue.isEmpty
+                                        ? null
+                                        : titleValue,
+                                    done: false,
+                                  );
+
+                                  if (!context.mounted) return;
+                                  Navigator.pop(context);
+                                  context.pushNamed(
+                                    'workout_detail',
+                                    pathParameters: {'id': wid},
+                                  );
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.error_outline,
+                                            color: Colors.white,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              'Erro ao criar treino: $e',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      backgroundColor:
+                                          Theme.of(context).colorScheme.error,
+                                      behavior: SnackBarBehavior.floating,
+                                      duration:
+                                          AppConstants.snackBarErrorDuration,
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          );
+        },
+      );
+
+      setState(() {}); // atualiza a lista/gráfico depois do cadastro
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Erro ao abrir formulário: $e')),
+            ],
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
 
-// ---------- componentes auxiliares (mantidos do dia anterior) ----------
+// ========== COMPONENTES AUXILIARES ==========
 
 class _QuickFilters extends StatelessWidget {
   final _QuickRange current;
@@ -395,141 +796,145 @@ class _ChipStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Chip(avatar: Icon(icon, size: 18), label: Text(label));
-  }
-}
-
-// --------- Gráfico simples (layout por Row/Expanded) ---------
-
-class _VolumeChartSimpleCard extends StatelessWidget {
-  final List<({DateTime day, int volume})> volumes;
-  const _VolumeChartSimpleCard({required this.volumes});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final values = volumes.map((e) => e.volume).toList();
-    final labels = volumes.map((e) => DateFormat('dd/MM').format(e.day)).toList();
-    final title = 'Séries por dia (${volumes.length}d)';
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 160,
-              child: _BarsRow(
-                values: values,
-                labels: labels,
-                barColor: cs.primary,
-                textColor: Theme.of(context).textTheme.bodySmall?.color ?? cs.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return Chip(
+      avatar: Icon(icon, size: 18),
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 }
 
-class _BarsRow extends StatelessWidget {
-  final List<int> values;
-  final List<String> labels;
-  final Color barColor;
-  final Color textColor;
+class _VolumeChartSimpleCard extends StatelessWidget {
+  final List<({DateTime day, int volume})> volumes;
 
-  const _BarsRow({
-    required this.values,
-    required this.labels,
-    required this.barColor,
-    required this.textColor,
-  });
+  const _VolumeChartSimpleCard({required this.volumes});
 
   @override
   Widget build(BuildContext context) {
-    if (values.isEmpty) {
-      return const Center(child: Text('Sem dados no período'));
-    }
-
-    final maxVal = values.reduce((a, b) => a > b ? a : b);
-    final n = values.length;
-
-    final Set<int> labelIdxs = {for (int i = 0; i < n; i++) i};
-
-    // largura da barra (respiro lateral)
-    double widthFactor;
-    if (n <= 6) {
-      widthFactor = 0.55;
-    } else if (n <= 12) {
-      widthFactor = 0.42;
-    } else if (n <= 20) {
-      widthFactor = 0.34;
-    } else {
-      widthFactor = 0.28;
-    }
-
-    // barra mínima p/ dias zerados
-    const double minHeightFactor = 0.02;
-
-    // ajustes de rótulo para caber (ângulo e fonte menor)
-    const double labelAngle = -0.6; // ~ -34°
-    final double labelFont = (n > 12) ? 8 : 9;
-    final double labelBoxHeight = (n > 12) ? 22 : 18;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: List.generate(n, (i) {
-        final v = values[i];
-        final raw = maxVal == 0 ? 0.0 : (v / maxVal);
-        final hFactor = v == 0 ? minHeightFactor : raw;
-        final color = v == 0 ? barColor.withOpacity(0.28) : barColor;
-
-        return Expanded(
+    if (volumes.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // Barra
-              Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: FractionallySizedBox(
-                    widthFactor: widthFactor,
-                    heightFactor: hFactor,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                ),
+              Icon(
+                Icons.bar_chart,
+                size: 48,
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
               ),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: labelBoxHeight,
-                child: Center(
-                  child: labelIdxs.contains(i)
-                      ? Transform.rotate(
-                          angle: labelAngle,
-                          child: Text(
-                            labels[i],
-                            style: TextStyle(fontSize: labelFont, color: textColor),
-                            softWrap: false,
-                            overflow: TextOverflow.visible,
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
+              const SizedBox(height: 8),
+              Text(
+                'Sem dados no período',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
           ),
-        );
-      }),
+        ),
+      );
+    }
+
+    final maxVol = volumes.map((v) => v.volume).reduce((a, b) => a > b ? a : b);
+    if (maxVol == 0) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Icon(
+                Icons.bar_chart,
+                size: 48,
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              ),
+              const SizedBox(height: 8),
+              const Text('Nenhum treino registrado no período'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.bar_chart, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Volume de séries por dia',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 120,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: volumes.map((v) {
+                  final heightFactor = maxVol > 0 ? v.volume / maxVol : 0.0;
+                  final barHeight = 100 * heightFactor;
+
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (v.volume > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '${v.volume}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          Container(
+                            height: barHeight,
+                            decoration: BoxDecoration(
+                              color: v.volume > 0
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .surfaceVariant,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('dd/MM').format(v.day),
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total: ${volumes.fold<int>(0, (sum, v) => sum + v.volume)} séries',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Text(
+                  'Máx: $maxVol séries/dia',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
