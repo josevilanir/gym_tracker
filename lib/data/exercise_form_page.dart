@@ -1,9 +1,12 @@
+// lib/data/exercise_form_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import 'package:gym_tracker/core/enums.dart';               // MuscleGroup enum
-import 'package:gym_tracker/data/db/app_database.dart';     // databaseProvider + ExercisesCompanion
+import 'package:gym_tracker/core/enums.dart';
+import 'package:gym_tracker/core/validators.dart';  // <- NOVO IMPORT
+import 'package:gym_tracker/core/constants.dart';
+import 'package:gym_tracker/data/db/app_database.dart';
 import 'package:drift/drift.dart' show Value;
 
 class ExerciseFormPage extends ConsumerStatefulWidget {
@@ -28,7 +31,16 @@ class _ExerciseFormPageState extends ConsumerState<ExerciseFormPage> {
   }
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    // Valida o formulário completo
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Por favor, corrija os erros antes de salvar'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -49,14 +61,21 @@ class _ExerciseFormPageState extends ConsumerState<ExerciseFormPage> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Exercício criado!')),
+        SnackBar(
+          content: const Text('Exercício criado com sucesso!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-      // retorna o id criado (útil pra selecionar automaticamente na tela anterior)
+      // retorna o id criado
       Navigator.of(context).pop(id);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao salvar: $e')),
+        SnackBar(
+          content: Text('Erro ao salvar: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -74,45 +93,76 @@ class _ExerciseFormPageState extends ConsumerState<ExerciseFormPage> {
             key: _formKey,
             child: ListView(
               children: [
+                // Nome do exercício (OBRIGATÓRIO)
                 TextFormField(
                   controller: _nameCtrl,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome do exercício',
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'Nome do exercício *',
                     hintText: 'Ex.: Supino reto',
+                    helperText: 'Mín. 2 caracteres',
+                    prefixIcon: const Icon(Icons.fitness_center),
+                    counterText: '${_nameCtrl.text.length}/${AppConstants.maxExerciseNameLength}',
                   ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
+                  maxLength: AppConstants.maxExerciseNameLength,
+                  validator: Validators.exerciseName,  // <- VALIDAÇÃO APLICADA
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  onChanged: (_) => setState(() {}), // atualiza counter
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+
+                // Grupo muscular
                 DropdownButtonFormField<MuscleGroup>(
                   value: _muscle,
-                  decoration: const InputDecoration(labelText: 'Grupo muscular'),
+                  decoration: const InputDecoration(
+                    labelText: 'Grupo muscular *',
+                    prefixIcon: Icon(Icons.accessibility_new),
+                  ),
                   items: MuscleGroup.values
                       .map((m) => DropdownMenuItem(
                             value: m,
-                            child: Text(m.name),
+                            child: Text(_getMuscleGroupLabel(m)),
                           ))
                       .toList(),
                   onChanged: (v) => setState(() => _muscle = v ?? _muscle),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+
+                // Equipamento (OPCIONAL)
                 TextFormField(
                   controller: _equipCtrl,
                   textInputAction: TextInputAction.done,
+                  textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     labelText: 'Equipamento (opcional)',
-                    hintText: 'Ex.: Barbell, Dumbbell, Máquina…',
+                    hintText: 'Ex.: Barra, Halter, Máquina...',
+                    prefixIcon: Icon(Icons.construction),
                   ),
+                  validator: Validators.equipment,  // <- VALIDAÇÃO APLICADA
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                 ),
                 const SizedBox(height: 24),
+
+                // Botão de salvar
                 FilledButton.icon(
                   onPressed: _saving ? null : _submit,
                   icon: _saving
                       ? const SizedBox(
-                          width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.save),
-                  label: Text(_saving ? 'Salvando...' : 'Salvar'),
+                  label: Text(_saving ? 'Salvando...' : 'Salvar exercício'),
+                ),
+                const SizedBox(height: 8),
+
+                // Texto de ajuda
+                const Text(
+                  '* Campos obrigatórios',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
@@ -120,5 +170,32 @@ class _ExerciseFormPageState extends ConsumerState<ExerciseFormPage> {
         ),
       ),
     );
+  }
+
+  String _getMuscleGroupLabel(MuscleGroup group) {
+    switch (group) {
+      case MuscleGroup.chest:
+        return 'Peito';
+      case MuscleGroup.back:
+        return 'Costas';
+      case MuscleGroup.legs:
+        return 'Pernas';
+      case MuscleGroup.shoulders:
+        return 'Ombros';
+      case MuscleGroup.biceps:
+        return 'Bíceps';
+      case MuscleGroup.triceps:
+        return 'Tríceps';
+      case MuscleGroup.core:
+        return 'Core';
+      case MuscleGroup.glutes:
+        return 'Glúteos';
+      case MuscleGroup.fullbody:
+        return 'Corpo inteiro';
+      case MuscleGroup.cardio:
+        return 'Cardio';
+      case MuscleGroup.other:
+        return 'Outro';
+    }
   }
 }
