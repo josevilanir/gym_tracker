@@ -6,16 +6,6 @@ import '../../core/enums.dart';
 import '../../core/calculations.dart'; 
 import '../db/app_database.dart';
 
-
-  // lib/data/repositories/workout_repository.dart
-// ADICIONAR ESTAS CLASSES E MÉTODO NO FINAL DO ARQUIVO (antes do fechamento da classe)
-
-// ============================================
-// MODELOS PARA QUERIES OTIMIZADAS (N+1 FIX)
-// ============================================
-
-/// Representa um exercício completo do treino com todos seus dados
-/// Evita o problema N+1 ao buscar tudo de uma vez
 class WorkoutExerciseWithDetails {
   final WorkoutExercise workoutExercise;
   final Exercise exercise;
@@ -37,8 +27,6 @@ class WorkoutExerciseWithDetails {
   int get order => workoutExercise.ord;
 }
 
-/// Representa um treino completo com todas suas informações
-/// Usado para exibição no histórico/detalhes
 class WorkoutWithDetails {
   final Workout workout;
   final List<WorkoutExerciseWithDetails> exercises;
@@ -65,7 +53,6 @@ class WorkoutWithDetails {
     return total;
   }
 }
-
 
 class WorkoutRepository {
   final AppDatabase db;
