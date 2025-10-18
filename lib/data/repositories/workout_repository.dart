@@ -6,6 +6,67 @@ import '../../core/enums.dart';
 import '../../core/calculations.dart'; 
 import '../db/app_database.dart';
 
+
+  // lib/data/repositories/workout_repository.dart
+// ADICIONAR ESTAS CLASSES E MÉTODO NO FINAL DO ARQUIVO (antes do fechamento da classe)
+
+// ============================================
+// MODELOS PARA QUERIES OTIMIZADAS (N+1 FIX)
+// ============================================
+
+/// Representa um exercício completo do treino com todos seus dados
+/// Evita o problema N+1 ao buscar tudo de uma vez
+class WorkoutExerciseWithDetails {
+  final WorkoutExercise workoutExercise;
+  final Exercise exercise;
+  final List<SetEntry> sets;
+
+  const WorkoutExerciseWithDetails({
+    required this.workoutExercise,
+    required this.exercise,
+    required this.sets,
+  });
+
+  /// ID do WorkoutExercise (útil para keys em widgets)
+  String get id => workoutExercise.id;
+
+  /// Se o exercício está concluído
+  bool get isDone => workoutExercise.done;
+
+  /// Ordem do exercício no treino
+  int get order => workoutExercise.ord;
+}
+
+/// Representa um treino completo com todas suas informações
+/// Usado para exibição no histórico/detalhes
+class WorkoutWithDetails {
+  final Workout workout;
+  final List<WorkoutExerciseWithDetails> exercises;
+
+  const WorkoutWithDetails({
+    required this.workout,
+    required this.exercises,
+  });
+
+  /// Número total de exercícios
+  int get exerciseCount => exercises.length;
+
+  /// Número total de séries
+  int get totalSets => exercises.fold(0, (sum, ex) => sum + ex.sets.length);
+
+  /// Volume total (kg)
+  double get totalVolume {
+    double total = 0;
+    for (final ex in exercises) {
+      for (final set in ex.sets) {
+        total += set.reps * set.weight;
+      }
+    }
+    return total;
+  }
+}
+
+
 class WorkoutRepository {
   final AppDatabase db;
   final _uuid = const Uuid();
@@ -486,7 +547,7 @@ class WorkoutRepository {
   }
 
   // ============================================
-  // PRs & RECORDES (usando lib/core/calculations.dart)
+  //               PRs & RECORDES
   // ============================================
   
   /// Melhor e1RM histórico para um exercício
@@ -677,6 +738,175 @@ class WorkoutRepository {
     }
     return best;
   }
+// ============================================
+// ADICIONAR ESTE MÉTODO NA CLASSE WorkoutRepository
+// ============================================
+
+/// Busca um treino completo com TODOS os dados de uma vez
+/// 
+/// **Performance:** 3 queries em vez de N+M queries
+/// - 1 query para buscar workout_exercises
+/// - 1 query para buscar todos os exercises
+/// - 1 query para buscar todos os sets
+/// 
+/// **Antes (N+1):** 
+/// - 10 exercícios = 1 + (10 × 1) + (10 × 1) = 21 queries
+/// 
+/// **Depois (otimizado):**
+/// - 10 exercícios = 1 + 1 + 1 = 3 queries (7x mais rápido!)
+Future<WorkoutWithDetails> getWorkoutWithDetails(String workoutId) async {
+  // 1. Buscar o treino
+  final workout = await db.getWorkoutById(workoutId);
+  if (workout == null) {
+    throw Exception('Treino não encontrado: $workoutId');
+  }
+
+  // 2. Buscar TODOS os workout_exercises do treino (1 query)
+  final workoutExercises = await db.listWorkoutExercises(workoutId);
+
+  if (workoutExercises.isEmpty) {
+    return WorkoutWithDetails(workout: workout, exercises: const []);
+  }
+
+  // 3. Buscar TODOS os exercises de uma vez (1 query)
+  final exerciseIds = workoutExercises.map((we) => we.exerciseId).toSet().toList();
+  final exercises = await (db.select(db.exercises)
+        ..where((e) => e.id.isIn(exerciseIds)))
+      .get();
+
+  // Criar mapa para lookup O(1)
+  final exerciseMap = {for (var e in exercises) e.id: e};
+
+  // 4. Buscar TODOS os sets de uma vez (1 query)
+  final workoutExerciseIds = workoutExercises.map((we) => we.id).toList();
+  final allSets = await (db.select(db.setEntries)
+        ..where((s) => s.workoutExerciseId.isIn(workoutExerciseIds))
+        ..orderBy([(s) => OrderingTerm.asc(s.setIndex)]))
+      .get();
+
+  // Criar mapa de sets por workoutExerciseId
+  final setsMap = <String, List<SetEntry>>{};
+  for (final set in allSets) {
+    (setsMap[set.workoutExerciseId] ??= []).add(set);
+  }
+
+  // 5. Montar resultado final
+  final exercisesWithDetails = workoutExercises.map((we) {
+    final exercise = exerciseMap[we.exerciseId];
+    if (exercise == null) {
+      throw Exception('Exercício não encontrado: ${we.exerciseId}');
+    }
+
+    return WorkoutExerciseWithDetails(
+      workoutExercise: we,
+      exercise: exercise,
+      sets: setsMap[we.id] ?? [],
+    );
+  }).toList();
+
+  return WorkoutWithDetails(
+    workout: workout,
+    exercises: exercisesWithDetails,
+  );
+}
+
+/// Busca múltiplos treinos completos de uma vez (para lista de histórico)
+/// 
+/// **Performance:** Ainda mais otimizado para listas
+/// - Busca TODOS os workouts
+/// - Busca TODOS os workout_exercises
+/// - Busca TODOS os exercises
+/// - Busca TODOS os sets
+/// 
+/// **Antes:** N treinos × M exercícios = centenas de queries
+/// **Depois:** 4 queries no total!
+Future<List<WorkoutWithDetails>> getMultipleWorkoutsWithDetails(
+  List<String> workoutIds,
+) async {
+  if (workoutIds.isEmpty) return const [];
+
+  // 1. Buscar TODOS os workouts (1 query)
+  final workouts = await (db.select(db.workouts)
+        ..where((w) => w.id.isIn(workoutIds)))
+      .get();
+
+  final workoutMap = {for (var w in workouts) w.id: w};
+
+  // 2. Buscar TODOS os workout_exercises (1 query)
+  final allWorkoutExercises = await (db.select(db.workoutExercises)
+        ..where((we) => we.workoutId.isIn(workoutIds))
+        ..orderBy([(we) => OrderingTerm.asc(we.ord)]))
+      .get();
+
+  if (allWorkoutExercises.isEmpty) {
+    return workouts
+        .map((w) => WorkoutWithDetails(workout: w, exercises: const []))
+        .toList();
+  }
+
+  // 3. Buscar TODOS os exercises (1 query)
+  final exerciseIds =
+      allWorkoutExercises.map((we) => we.exerciseId).toSet().toList();
+  final exercises = await (db.select(db.exercises)
+        ..where((e) => e.id.isIn(exerciseIds)))
+      .get();
+
+  final exerciseMap = {for (var e in exercises) e.id: e};
+
+  // 4. Buscar TODOS os sets (1 query)
+  final workoutExerciseIds = allWorkoutExercises.map((we) => we.id).toList();
+  final allSets = await (db.select(db.setEntries)
+        ..where((s) => s.workoutExerciseId.isIn(workoutExerciseIds))
+        ..orderBy([(s) => OrderingTerm.asc(s.setIndex)]))
+      .get();
+
+  // Mapear sets por workoutExerciseId
+  final setsMap = <String, List<SetEntry>>{};
+  for (final set in allSets) {
+    (setsMap[set.workoutExerciseId] ??= []).add(set);
+  }
+
+  // Mapear workout_exercises por workoutId
+  final workoutExercisesMap = <String, List<WorkoutExercise>>{};
+  for (final we in allWorkoutExercises) {
+    (workoutExercisesMap[we.workoutId] ??= []).add(we);
+  }
+
+  // 5. Montar resultado final
+  return workouts.map((workout) {
+    final wes = workoutExercisesMap[workout.id] ?? [];
+
+    final exercisesWithDetails = wes.map((we) {
+      final exercise = exerciseMap[we.exerciseId];
+      if (exercise == null) {
+        // Se exercício foi deletado, criar placeholder
+        return WorkoutExerciseWithDetails(
+          workoutExercise: we,
+          exercise: Exercise(
+            id: we.exerciseId,
+            name: 'Exercício removido',
+            muscleGroup: 'other',
+            equipment: null,
+            isCustom: false,
+          ),
+          sets: setsMap[we.id] ?? [],
+        );
+      }
+
+      return WorkoutExerciseWithDetails(
+        workoutExercise: we,
+        exercise: exercise,
+        sets: setsMap[we.id] ?? [],
+      );
+    }).toList();
+
+    return WorkoutWithDetails(
+      workout: workout,
+      exercises: exercisesWithDetails,
+    );
+  }).toList();
+}
+
 }
 
 // ============================================
