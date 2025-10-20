@@ -856,7 +856,7 @@ class _VolumeChartSimpleCard extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -870,14 +870,14 @@ class _VolumeChartSimpleCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 2),
             SizedBox(
-              height: 120,
+              height: 67,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: volumes.map((v) {
                   final heightFactor = maxVol > 0 ? v.volume / maxVol : 0.0;
-                  final barHeight = 100 * heightFactor;
+                  final barHeight = 50 * heightFactor;
 
                   return Expanded(
                     child: Padding(
@@ -886,15 +886,15 @@ class _VolumeChartSimpleCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           if (v.volume > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                '${v.volume}',
-                                style: Theme.of(context).textTheme.bodySmall,
+                            Text(
+                              '${v.volume}',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontSize: 9,
+                                height: 1.0,
                               ),
                             ),
                           Container(
-                            height: barHeight,
+                            height: barHeight < 4 && v.volume > 0 ? 4 : barHeight,
                             decoration: BoxDecoration(
                               color: v.volume > 0
                                   ? Theme.of(context).colorScheme.primary
@@ -904,10 +904,12 @@ class _VolumeChartSimpleCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
-                          const SizedBox(height: 4),
                           Text(
                             DateFormat('dd/MM').format(v.day),
-                            style: Theme.of(context).textTheme.bodySmall,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontSize: 8,
+                              height: 1.0,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -918,17 +920,17 @@ class _VolumeChartSimpleCard extends StatelessWidget {
                 }).toList(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 2),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   'Total: ${volumes.fold<int>(0, (sum, v) => sum + v.volume)} séries',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
                 ),
                 Text(
                   'Máx: $maxVol séries/dia',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
                 ),
               ],
             ),
