@@ -1,9 +1,8 @@
 // lib/router/app_router.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
 import '../features/workout/pages/today_page.dart';
-import '../features/workout/pages/history_page.dart';
+import '../features/workout/pages/history/history_page.dart';
 import '../features/exercise/pages/catalog_page.dart';
 import '../features/settings/pages/settings_page.dart';
 import '../features/workout/pages/workout_detail_page.dart';
