@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../controllers/providers.dart';
-import 'widgets/quick_filters.dart'; // QuickRange vem daqui agora
+import 'widgets/quick_filters.dart';
 import 'widgets/workout_list_tab.dart';
 import 'widgets/stats_tab.dart';
 import 'dialogs/register_past_workout_dialog.dart';
