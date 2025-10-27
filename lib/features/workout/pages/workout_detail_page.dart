@@ -534,9 +534,12 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
   final _weightCtrl = TextEditingController();
 
     bool _isAddingSet = false;
-    bool _isDeletingSet = false;
-    bool _isSavingNote = false;
-    bool _isTogglingDone = false;
+    // ignore: unused_field
+    final bool _isDeletingSet = false;
+    // ignore: unused_field
+    final bool _isSavingNote = false;
+    // ignore: unused_field
+    final bool _isTogglingDone = false;
 
   @override
   void dispose() {

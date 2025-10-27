@@ -817,8 +817,6 @@ Future<List<WorkoutWithDetails>> getMultipleWorkoutsWithDetails(
         ..where((w) => w.id.isIn(workoutIds)))
       .get();
 
-  final workoutMap = {for (var w in workouts) w.id: w};
-
   // 2. Buscar TODOS os workout_exercises (1 query)
   final allWorkoutExercises = await (db.select(db.workoutExercises)
         ..where((we) => we.workoutId.isIn(workoutIds))

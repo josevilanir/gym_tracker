@@ -88,7 +88,6 @@ double _wathan(int reps, double weight) {
 
 /// Helper para exponencial (dart:math)
 double _exp(double x) {
-  const e = 2.718281828459045;
   double result = 1.0;
   double term = 1.0;
   
