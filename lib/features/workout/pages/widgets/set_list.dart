@@ -109,10 +109,12 @@ class _SetItem extends ConsumerWidget {
     );
   }
 
-  Future<void> _editNote(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(text: set.note ?? '');
+ Future<void> _editNote(BuildContext context, WidgetRef ref) async {
+  final controller = TextEditingController(text: set.note ?? '');
+  String? newNote;
 
-    final newNote = await showDialog<String?>(
+  try {
+    final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nota da série'),
@@ -127,30 +129,38 @@ class _SetItem extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () {
+              newNote = controller.text.trim();
+              Navigator.pop(ctx, true);
+            },
             child: const Text('Salvar'),
           ),
         ],
       ),
     );
 
-    controller.dispose();
+    // Verificação 1: após showDialog
+    if (!context.mounted) return;
 
-    if (newNote != null) {
+    if (result == true && newNote != null) {
       final repo = ref.read(workoutRepoProvider);
       
       await repo.updateSetNote(
         set.id,
-        newNote.isEmpty ? null : newNote,
+        newNote!.isEmpty ? null : newNote,
       );
 
+      // Verificação 2: após updateSetNote
       if (!context.mounted) return;
 
       await onChanged();
+
+      // Verificação 3: após onChanged
+      if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -159,48 +169,58 @@ class _SetItem extends ConsumerWidget {
         ),
       );
     }
+  } finally {
+    controller.dispose();
   }
+}
 
-  Future<void> _deleteSet(BuildContext context, WidgetRef ref) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remover série'),
-        content: Text(
-          'Remover a série ${set.setIndex} '
-          '(${set.reps} reps, ${set.weight.toStringAsFixed(AppConstants.weightDecimalPlaces)} kg)?',
+Future<void> _deleteSet(BuildContext context, WidgetRef ref) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Remover série'),
+      content: Text(
+        'Remover a série ${set.setIndex} '
+        '(${set.reps} reps, ${set.weight.toStringAsFixed(AppConstants.weightDecimalPlaces)} kg)?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancelar'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.red,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('Remover'),
-          ),
-        ],
+          child: const Text('Remover'),
+        ),
+      ],
+    ),
+  );
+
+  // Verificação 1: após showDialog
+  if (!context.mounted) return;
+
+  if (confirm == true) {
+    final repo = ref.read(workoutRepoProvider);
+    
+    await repo.deleteSet(set.id);
+
+    // Verificação 2: após deleteSet
+    if (!context.mounted) return;
+
+    await onChanged();
+
+    // Verificação 3: após onChanged
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Série removida.'),
+        duration: AppConstants.snackBarSuccessDuration,
       ),
     );
-
-    if (confirm == true) {
-      final repo = ref.read(workoutRepoProvider);
-      
-      await repo.deleteSet(set.id);
-
-      if (!context.mounted) return;
-
-      await onChanged();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Série removida.'),
-          duration: AppConstants.snackBarSuccessDuration,
-        ),
-      );
-    }
   }
+}
 }
