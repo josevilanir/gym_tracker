@@ -1,13 +1,13 @@
-// lib/features/workout/pages/workout_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-
+import '../../../core/widgets/number_input_field.dart';
 import '../controllers/rest_timer_controller.dart';
 import '../../../core/enums.dart';
 import '../../../core/constants.dart';
 import '../../../data/db/app_database.dart';
 import '../../workout/controllers/providers.dart';
+import 'package:flutter/services.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   final String workoutId;
@@ -533,6 +533,11 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
   final _repsCtrl = TextEditingController();
   final _weightCtrl = TextEditingController();
 
+    bool _isAddingSet = false;
+    bool _isDeletingSet = false;
+    bool _isSavingNote = false;
+    bool _isTogglingDone = false;
+
   @override
   void dispose() {
     _repsCtrl.dispose();
@@ -582,6 +587,82 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
     }
 
     return null;
+  }
+
+  Future<void> _addSet() async {
+    final repo = ref.read(workoutRepoProvider);
+    
+    // Validação
+    final repsError = _validateReps(_repsCtrl.text);
+    final weightError = _validateWeight(_weightCtrl.text);
+
+    if (repsError != null || weightError != null) {
+      HapticFeedback.heavyImpact();
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(repsError ?? weightError ?? 'Erro de validação'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isAddingSet = true);
+
+    try {
+      final reps = int.parse(_repsCtrl.text.trim());
+      final weight = double.parse(_weightCtrl.text.trim().replaceAll(',', '.'));
+
+      await repo.addSetQuick(
+        workoutExerciseId: widget.we.id,
+        reps: reps,
+        weight: weight,
+      );
+
+      HapticFeedback.mediumImpact();
+
+      if (!mounted) return;
+
+      _repsCtrl.clear();
+      _weightCtrl.clear();
+
+      await widget.onChanged();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('Série $reps × ${weight.toStringAsFixed(1)}kg adicionada!'),
+            ],
+          ),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      HapticFeedback.heavyImpact();
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao adicionar série: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isAddingSet = false);
+      }
+    }
   }
 
   @override
@@ -785,93 +866,104 @@ class _ExerciseTileState extends ConsumerState<_ExerciseTile> {
 
                         SizedBox(height: UIConstants.paddingS),
 
-                        // Adicionar nova série COM VALIDAÇÃO
+                        // Botão para copiar série anterior
+                        FutureBuilder<List<SetEntry>>(
+                          future: repo.listSets(widget.we.id),
+                          builder: (context, snapshot) {
+                            final sets = snapshot.data ?? [];
+                            if (sets.isEmpty) return const SizedBox.shrink();
+                            
+                            final lastSet = sets.last;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: CopyPreviousSetButton(
+                                previousSetInfo: '${lastSet.reps} reps × ${lastSet.weight.toStringAsFixed(1)}kg',
+                                onCopy: () {
+                                  _repsCtrl.text = lastSet.reps.toString();
+                                  _weightCtrl.text = lastSet.weight.toString();
+                                  HapticFeedback.mediumImpact();
+                                  
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Row(
+                                        children: [
+                                          Icon(Icons.check_circle, color: Colors.white),
+                                          SizedBox(width: 8),
+                                          Text('Série anterior copiada!'),
+                                        ],
+                                      ),
+                                      duration: Duration(seconds: 1),
+                                      backgroundColor: Colors.green,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                        ),
+
+                        SizedBox(height: UIConstants.paddingS),
+
+                        // Campos de entrada com botões +/-
                         Row(
                           children: [
                             Expanded(
-                              child: TextFormField(
+                              child: NumberInputField(
                                 controller: _repsCtrl,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: 'Reps',
-                                  helperText:
-                                      '${AppConstants.minReps}-${AppConstants.maxReps}',
-                                  errorMaxLines: 2,
-                                ),
+                                label: 'Reps',
+                                min: AppConstants.minReps.toDouble(),
+                                max: AppConstants.maxReps.toDouble(),
+                                step: 1,
+                                isInteger: true,
+                                helperText: '${AppConstants.minReps}-${AppConstants.maxReps}',
                                 validator: _validateReps,
-                                autovalidateMode: AutovalidateMode.onUserInteraction,
                               ),
                             ),
                             SizedBox(width: UIConstants.paddingM),
                             Expanded(
-                              child: TextFormField(
+                              child: NumberInputField(
                                 controller: _weightCtrl,
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
-                                decoration: InputDecoration(
-                                  labelText: 'Peso (kg)',
-                                  helperText:
-                                      '${AppConstants.minWeight}-${AppConstants.maxWeight}',
-                                  errorMaxLines: 2,
-                                ),
+                                label: 'Peso (kg)',
+                                min: AppConstants.minWeight,
+                                max: AppConstants.maxWeight,
+                                step: 2.5,
+                                isInteger: false,
+                                helperText: '${AppConstants.minWeight}-${AppConstants.maxWeight}',
                                 validator: _validateWeight,
-                                autovalidateMode: AutovalidateMode.onUserInteraction,
                               ),
                             ),
-                            SizedBox(width: UIConstants.paddingM),
-                            FilledButton.icon(
-                              icon: const Icon(Icons.add),
-                              label: const Text(''),
-                              onPressed: () async {
-                                // Valida antes de salvar
-                                final repsError = _validateReps(_repsCtrl.text);
-                                final weightError = _validateWeight(_weightCtrl.text);
-
-                                if (repsError != null || weightError != null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        repsError ??
-                                            weightError ??
-                                            AppConstants.errorInvalidReps,
-                                      ),
-                                      duration: AppConstants.snackBarErrorDuration,
-                                      backgroundColor:
-                                          Theme.of(context).colorScheme.error,
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                final reps = int.parse(_repsCtrl.text.trim());
-                                final weight = double.parse(
-                                  _weightCtrl.text.trim().replaceAll(',', '.'),
-                                );
-
-                                await repo.addSetQuick(
-                                  workoutExerciseId: widget.we.id,
-                                  reps: reps,
-                                  weight: weight,
-                                );
-
-                                if (!mounted) return;
-
-                                _repsCtrl.clear();
-                                _weightCtrl.clear();
-
-                                await widget.onChanged();
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(AppConstants.successSetAdded),
-                                    duration: AppConstants.snackBarSuccessDuration,
-                                  ),
-                                );
-                              },
-                            ),
-                            SizedBox(width: UIConstants.paddingS),
                           ],
+                        ),
+
+                        SizedBox(height: UIConstants.paddingM),
+
+                        // Botões rápidos para repetições
+                        QuickValueButtons(
+                          label: 'Repetições comuns',
+                          values: const [5, 8, 10, 12, 15],
+                          onValueSelected: (value) {
+                            _repsCtrl.text = value.toString();
+                            HapticFeedback.lightImpact();
+                          },
+                        ),
+
+                        SizedBox(height: UIConstants.paddingM),
+
+                        // Botão de adicionar série
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                              onPressed: _isAddingSet ? null : _addSet,
+                              icon: _isAddingSet
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.add),
+                            label: const Text('Adicionar Série'),
+                          ),
                         ),
                       ],
                     );
