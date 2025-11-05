@@ -4,10 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../controllers/providers.dart';
 
-/// Página de Estatísticas / Progresso do usuário.
-/// - Cards de métricas do mês (treinos, exercícios, streak)
-/// - Gráfico simples de séries por dia (7d / 30d / mês atual)
-/// - Top exercícios por volume (nº de séries) no período selecionado
 class ProgressPage extends ConsumerStatefulWidget {
   const ProgressPage({super.key});
 
