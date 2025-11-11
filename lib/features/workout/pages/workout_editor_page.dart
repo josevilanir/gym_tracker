@@ -74,37 +74,26 @@ class _WorkoutEditorPageState extends ConsumerState<WorkoutEditorPage> {
     try {
       final repo = ref.read(workoutRepoProvider);
       
+      // IMPORTANTE: Captura os valores ANTES de qualquer operação assíncrona
+      final templateName = _titleCtrl.text.trim();
+      final exerciseIds = _selectedList.map((e) => e.id).toList();
+      
       // Cria o template primeiro
       final templateId = await repo.createTemplate(
-        name: _titleCtrl.text.trim(),
+        name: templateName,
       );
       
       // Depois adiciona os exercícios
       await repo.setTemplateExercises(
         templateId: templateId,
-        exerciseIdsInOrder: _selectedList.map((e) => e.id).toList(),
+        exerciseIdsInOrder: exerciseIds,
       );
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(AppConstants.successTemplateCreated),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          duration: AppConstants.snackBarSuccessDuration,
-        ),
-      );
+      // Navega de volta
+      context.pop();
 
-      context.pop(); // Volta para a tela anterior
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
